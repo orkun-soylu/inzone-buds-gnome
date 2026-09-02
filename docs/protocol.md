@@ -38,10 +38,19 @@ Host `0xFC00` opcode'lu COMMAND yolluyor, dongle `0xFF` vendor event code'uyla c
 ⚠️ COMMAND ve EVENT yönünde `[3..5]` farklı anlam taşıyor — HeadsetControl'ün
 `buildCommand` ve `parseEvent` fonksiyonları bu yüzden simetrik değil.
 
-**Checksum.** H5'te `sum(buf[5..N]) & 0xFF`. Yazarken `sum(buf[6..N])`
-(post-report-id offsetleriyle `HCI[4..end-1]`) olarak hesaplanıyor — okuma ve
-yazma tarafı bir byte kayık, bu upstream'de böyle. `sniff.py` hangi aralığın
-gerçekten tuttuğunu ölçüyor, varsayım yapmıyor.
+**Checksum — tek kural: `sum(buf[6..N]) & 0xFF`, konum `buf[N+1]`.**
+
+H5 sürücüsü okuma tarafında `sum(buf[5..N])` yazıyor ve bu da çalışıyor, ama
+sadece EVENT çerçevelerinde `buf[5]` sıfır dummy olduğu için. COMMAND
+çerçevelerinde `buf[5]` = `param_length` (sıfır değil) ve oradan başlamak
+**yanlış** sonuç verir. Ölçüldü (2026-09-02), gönderilen gerçek SET:
+
+```
+02 10 01 00 fc 0c 96 c3 41 41 02 02 00 | 00 14 ff 00 | f2
+                └── buf[6] ───────────────────────┘    checksum
+```
+
+`sum(buf[6..16]) = 0xF2` ✓ · `sum(buf[5..16]) = 0xFE` ✗ (kabul edilmezdi).
 
 ## event_type
 
@@ -91,6 +100,20 @@ Fiziksel düğme yok. Dongle üzerinden geçerli olan varsayılan atamalar:
 
 Atamalar INZONE Hub / Sony Sound Connect ile değiştirilebiliyor, yani bir
 `event_id`'nin arkasında bu eşleme de olmalı (henüz bulunmadı).
+
+### Yazma doğrulandı (2026-09-02)
+
+`SET` → cihaz `NTFY(0x20)` ile aynı TID'i geri döndürüyor, ardından doğrulama
+`GET` yeni durumu okuyor. İki yönde de çalıştı:
+
+```
+-> PC->RX NOISE_CONTROL(0x41) SET  tid=2  payload=00 14 ff 00
+<- RX->PC NOISE_CONTROL(0x41) NTFY tid=2  payload=00 14 ff 00     (ANC)
+-> PC->RX NOISE_CONTROL(0x41) GET  tid=3
+<- RX->PC NOISE_CONTROL(0x41) RET  tid=3  payload=00 14 ff 00
+```
+
+**Faz 0 tamam:** okuma ve yazma doğrulandı, protokol engeli kalmadı.
 
 ### `0x41` NOISE_CONTROL — çözüldü
 
