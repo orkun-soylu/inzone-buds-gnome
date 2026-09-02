@@ -58,10 +58,19 @@ if kind == "sony":
     note = describe_payload(0x04, info["payload"])
     check("batarya yorumu", note == "batarya: sag=80%, sol=75%, kutu=60%", repr(note))
 
-print("\n2) Sarj + offline durumlari")
-kind, info = parse(build_event(0x04, 0xA0, bytes([0x01, 90, 0x00, 0xFF, 0x01, 100])))
+print("\n2) Sarj / yok / durum-bilinmiyor etiketleri")
+kind, info = parse(build_event(0x04, 0xA0, bytes([0x01, 90, 0x00, 88, 0x00, 0xFF])))
 note = describe_payload(0x04, info["payload"])
-check("sarj ve offline etiketleri", note == "batarya: sag=90% (sarj), sol=offline, kutu=100% (sarj)", repr(note))
+check("sarj + kutu yok", note == "batarya: sag=90% (sarj), sol=88%, kutu=yok", repr(note))
+
+# GERCEK OLCUM (2026-09-02, laptop, kulakliklar takili, kutu ayri):
+#   GET BATTERY_INFO -> RET tid=2 payload=00 63 00 63 ff 64
+# Kutunun DURUM byte'i 0xFF -> "sarj" degil, bilinmiyor.
+kind, info = parse(build_event(0x04, 0x10, bytes.fromhex("00630063ff64"), tid=2))
+note = describe_payload(0x04, info["payload"])
+check("gercek yakalanan cerceve",
+      note == "batarya: sag=99%, sol=99%, kutu=100% (durum bilinmiyor)", repr(note))
+check("gercek cerceve RET(0x10) ve tid=2", info["event_type"] == 0x10 and info["tid"] == 2)
 
 print("\n3) H5 sekli 2-byte batarya payload'i")
 kind, info = parse(build_event(0x04, 0x10, bytes([0x00, 55])))

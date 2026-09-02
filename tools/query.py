@@ -91,16 +91,76 @@ def drain(fd, seconds, raw=False, want=None):
     return got
 
 
+def sweep(fd, addresses, lo, hi, timeout, raw=False, out=None):
+    """event_id araligini GET ile tara. Sadece GET — durum degistirmez."""
+    print("\nTarama: event_id 0x%02X..0x%02X, %s, GET, %.2f sn/adim"
+          % (lo, hi, "/".join(addr_str(a) for a in addresses), timeout))
+    print("(Ctrl-C kismi sonucu basar)\n")
+
+    found = {}   # event_id -> [(address, event_type, payload_hex)]
+    tid = 100
+    try:
+        for event_id in range(lo, hi + 1):
+            for address in addresses:
+                tid += 1
+                if tid > 0xFFF0:
+                    tid = 100
+                try:
+                    os.write(fd, build_command(address, event_id, ETYPE_GET, tid))
+                except OSError as e:
+                    print("  0x%02X yazma hatasi: %s" % (event_id, e))
+                    continue
+                for info in drain(fd, timeout, raw=raw):
+                    found.setdefault(event_id, []).append(
+                        (address, info["event_type"], info["payload"].hex(" ")))
+    except KeyboardInterrupt:
+        print("\n(tarama kesildi)")
+
+    lines = []
+    lines.append("%-22s %-9s %-15s %s" % ("EVENT_ID", "adres", "event_type", "payload"))
+    lines.append("-" * 78)
+    for event_id in sorted(found):
+        for address, etype, phex in found[event_id]:
+            name = EVENT_ID.get(event_id)
+            lines.append("%-22s %-9s %-15s %s%s" % (
+                "%s(0x%02X)" % (name or "UNKNOWN", event_id),
+                addr_str(address),
+                "%s(0x%02X)" % (EVENT_TYPE.get(etype, "?"), etype),
+                phex or "-",
+                "" if name else "   <-- YENI"))
+    body = "\n".join(lines)
+    print("\n" + "=" * 78)
+    print("TARAMA SONUCU — %d event_id cevap verdi" % len(found))
+    print("=" * 78)
+    print(body)
+    yeni = [e for e in found if e not in EVENT_ID]
+    print("\nbilinen: %d   yeni: %d" % (len(found) - len(yeni), len(yeni)))
+    if yeni:
+        print("yeni event_id'ler: %s" % ", ".join("0x%02X" % e for e in sorted(yeni)))
+
+    if out:
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        with open(out, "w") as f:
+            f.write("# INZONE Buds event_id taramasi 0x%02X..0x%02X\n\n" % (lo, hi))
+            f.write(body + "\n")
+        print("\nkaydedildi: %s" % out)
+    return found
+
+
 def main():
     ap = argparse.ArgumentParser(description="INZONE Buds dongle'a GET/SET yollar")
     ap.add_argument("-n", "--node")
     ap.add_argument("-e", "--event", default="0x04",
                     help="event_id (varsayilan 0x04 BATTERY_INFO)")
     ap.add_argument("-a", "--address", choices=["rx", "tx", "both"], default="both")
-    ap.add_argument("-t", "--timeout", type=float, default=2.0, help="cevap bekleme (sn)")
+    ap.add_argument("-t", "--timeout", type=float, default=2.0,
+                help="cevap bekleme (sn); tarama icin 0.3-0.4 yeterli")
     ap.add_argument("--cksum-lo", type=int, default=None,
                     help="checksum toplama baslangici (varsayilan 6; cevap yoksa 4-7 denenir)")
     ap.add_argument("--scan", action="store_true", help="bilinen event_id'leri sirayla GET'le")
+    ap.add_argument("--sweep", metavar="ARALIK", nargs="?", const="0x00-0xff",
+                    help="event_id araligini GET ile tara (varsayilan 0x00-0xff)")
+    ap.add_argument("--out", help="tarama sonucunu bu dosyaya yaz")
     ap.add_argument("--raw", action="store_true")
     ap.add_argument("--set", dest="do_set", action="store_true",
                     help="GET yerine SET yolla (DURUM DEGISTIRIR)")
@@ -128,6 +188,20 @@ def main():
 
     addresses = {"rx": [ADDR_PC_TO_RX], "tx": [ADDR_PC_TO_TX],
                  "both": [ADDR_PC_TO_RX, ADDR_PC_TO_TX]}[args.address]
+
+    if args.sweep:
+        lo_s, _, hi_s = args.sweep.partition("-")
+        try:
+            lo, hi = int(lo_s, 0), int(hi_s or lo_s, 0)
+        except ValueError:
+            sys.exit("HATA: --sweep araligi cozulemedi: %r (or: 0x00-0xff)" % args.sweep)
+        if args.do_set:
+            sys.exit("HATA: tarama sadece GET ile yapilir, --set ile birlestirilemez.")
+        try:
+            sweep(fd, addresses, lo, hi, args.timeout, raw=args.raw, out=args.out)
+        finally:
+            os.close(fd)
+        return
     events = sorted(EVENT_ID) if args.scan else [int(args.event, 0)]
     payload = bytes.fromhex(args.payload.replace(" ", "")) if args.payload else b""
     etype = ETYPE_SET if args.do_set else ETYPE_GET

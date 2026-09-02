@@ -67,19 +67,60 @@ push'ları TID=1 taşıyor, yeniden kullanılırsa push cevap sanılır.
 | `0x23` | SIDETONE_VOLUME | `[seviye, 0xFF]` — aralık doğrulanmamış |
 | `0x24` | MIC_VOLUME | `[mute, seviye, 0xFF]` — aralık doğrulanmamış |
 
-## Saha bulguları (2026-09-02, laptop)
+## Saha bulguları (2026-09-02, laptop) — PROTOKOL DOĞRULANDI
 
-`054c:0ec2` takılı, `/dev/hidraw6`, report descriptor **158 byte** ve içinde
-`06 04 ff` var — yani **`0xFF04` vendor collection mevcut.** Kontrol kanalı
-fiziksel olarak orada.
+Dongle `054c:0ec2` → `/dev/hidraw6`, report descriptor 158 byte.
+
+**Doğrulanan alışveriş:**
+
+```
+-> PC->RX  BATTERY_INFO(0x04)  GET  tid=2
+<- RX->PC  BATTERY_INFO(0x04)  RET  tid=2  payload=00 63 00 63 ff 64
+```
+
+Buds, H5 ile **aynı** Sony vendor HCI protokolünü konuşuyor. Doğrulananlar:
+çerçeve düzeni, `0xC396` key, adres nibble'ları, GET→RET semantiği, TID
+eşleşmesi ve checksum.
+
+**Checksum, yazma yönü: `sum(buf[6..12+len(payload)]) & 0xFF`** (yani
+`--cksum-lo 6`, H5'in `buildCommand`'ıyla aynı). İlk denemede tuttu.
 
 ⚠️ **Dongle kendiliğinden yayın yapmıyor.** Müzik çalarken 3 dakika pasif
 dinlemede *sıfır* rapor geldi. HeadsetControl'ün buds sürücüsündeki "the dongle
-sends unsolicited HID reports" ifadesi genel durum için yanlış; o raporlar
-muhtemelen yalnızca belirli olaylarda (bağlanma, kutuya koyma) çıkıyor.
+sends unsolicited HID reports" ifadesi genel durum için yanlış — o sürücü
+çalışıyorsa bile ancak cihaz kendiliğinden bir şey yolladığında çalışır.
+Doğru yol GET sormak.
 
-Sonuç: veri almak için **önce host'un GET yollaması gerekiyor** — tıpkı H5
-sürücüsünün `exchange()` deseni gibi. `tools/query.py` bunu yapıyor.
+### Batarya payload'ı (6 byte, ölçüldü)
+
+`[durum, yüzde] × (sağ, sol, kutu)`. Her iki alanda da **`0xFF` = bilinmiyor**.
+
+Yakalanan `00 63 00 63 ff 64` → sağ 99%, sol 99%, kutu 100% ama kutunun *durum*
+byte'ı `0xFF`: kulaklıklar takılıyken kutu dongle'a bağlı değil, o yüzden şarj
+durumu bilinmiyor. `0xFF`'i "şarj oluyor" diye okumak hatadır.
+
+### HID report descriptor — beş collection
+
+| usage_page | usage | report | yön / boyut | yorum |
+|---|---|---|---|---|
+| `0xFF04` | `0x0001` | `0x02` | In 63B, Out 63B | **kontrol kanalı** (doğrulandı) |
+| `0xFF13` | `0x0001` | `0x06` / `0x07` | Out 61B / In 61B | ikinci çift yönlü vendor kanalı, bilinmiyor |
+| `0x000C` | `0x0001` | `0x0C` | In 1B | Consumer — dokunmatik medya tuşları |
+| `0xFF03` | `0x0020` | `0xA0` / `0xA1` | Feat 34B / 22B | feature report, muhtemelen cihaz kimliği |
+| `0xFF01` | `0x0020` | `0xB0` | In 7B | 7 usage (`0x25`–`0x2B`), durum/buton olabilir |
+
+Ham descriptor:
+
+```
+0613ff0901a101150026ff00850609007508953d9102850709007508953d8102c0
+050c0901a101850c1500250109e909ea09e209cd09b509b6750195068102090095028102c0
+0604ff0901a101150026ff0085027508953f0902810209039102c0
+0603ff0920a101092185a0150026ff0075089522b102092285a19516b102c0
+0601ff0920a10185b009250926092709280929092a092b750895078102c0
+```
+
+⚠️ H5 sürücüsü `0xFF04` için usage `0x0002` diyor, buds'ta usage `0x0001`.
+Vendor collection'ı usage'a göre değil, **usage_page'e göre** seç.
 
 ## Buds'ın aynı protokolü konuştuğu tezi
 

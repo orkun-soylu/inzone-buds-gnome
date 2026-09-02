@@ -125,18 +125,24 @@ def parse(buf):
 def describe_payload(event_id, p):
     """Bilinen event'ler icin insan-okur yorum."""
     if event_id == 0x04:
+        # 0xFF her iki alanda da "bilinmiyor" sentinel'i.
+        # Olculdu (2026-09-02): kulakliklar takiliyken kutunun durum byte'i 0xFF.
+        def one(st, pct):
+            if pct == 0xFF:
+                return "yok"
+            suffix = ""
+            if st == 0xFF:
+                suffix = " (durum bilinmiyor)"
+            elif st:
+                suffix = " (sarj)"
+            return "%d%%%s" % (pct, suffix)
+
         if len(p) == 6:  # buds: (durum, yuzde) x 3
-            labels = ("sag", "sol", "kutu")
-            parts = []
-            for i, lab in enumerate(labels):
-                st, pct = p[2 * i], p[2 * i + 1]
-                pct_s = "offline" if pct == 0xFF else "%d%%" % pct
-                parts.append("%s=%s%s" % (lab, pct_s, " (sarj)" if st else ""))
-            return "batarya: " + ", ".join(parts)
+            return "batarya: " + ", ".join(
+                "%s=%s" % (lab, one(p[2 * i], p[2 * i + 1]))
+                for i, lab in enumerate(("sag", "sol", "kutu")))
         if len(p) == 2:  # H5 sekli
-            st, pct = p
-            return "batarya: %s%s" % ("offline" if pct == 0xFF else "%d%%" % pct,
-                                      " (sarj)" if st else "")
+            return "batarya: %s" % one(p[0], p[1])
     if event_id == 0x22 and p:
         return "game/chat balance = %d (0=full game, 90=full chat)" % p[0]
     if event_id in (0x21, 0x23, 0x24) and p:
