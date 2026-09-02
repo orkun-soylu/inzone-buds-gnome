@@ -75,7 +75,7 @@ push'ları TID=1 taşıyor, yeniden kullanılırsa push cevap sanılır.
 | `0x22` | GAME_CHAT_MIX_BALANCE | `32` (=50) | 0..90, 10'ar adım |
 | `0x23` | SIDETONE_VOLUME | `00 ff` | |
 | `0x24` | MIC_VOLUME | `00 ff ff` | |
-| `0x41` | **NOISE_CONTROL?** | `01 14 ff 00` | **byte[0] = mod**, düğmeyle `02→00→01`; byte[1]=`0x14`=20 |
+| `0x41` | **NOISE_CONTROL** | `01 14 ff 00` | `[mod, ambient_seviye, ff, 00]` — aşağıya bak |
 | `0x42` | — | `01 01 01` | |
 | `0x43` | — | `03` | |
 
@@ -92,10 +92,22 @@ Fiziksel düğme yok. Dongle üzerinden geçerli olan varsayılan atamalar:
 Atamalar INZONE Hub / Sony Sound Connect ile değiştirilebiliyor, yani bir
 `event_id`'nin arkasında bu eşleme de olmalı (henüz bulunmadı).
 
-**`0x41` en önemli bulgu.** Kullanıcı kulaklık düğmesiyle modu döndürünce üç
-ayrı `NTFY_ACTIVE` push'u geldi ve ilk byte `02 → 00 → 01` değişti. İkinci byte
-`0x14` = 20, Sony'nin ambient sound level aralığının (0–20) üst sınırı.
-**Hangi modun ANC hangisinin ambient olduğu henüz doğrulanmadı.**
+### `0x41` NOISE_CONTROL — çözüldü
+
+Payload: `[mod, ambient_seviye, 0xFF, 0x00]`
+
+| mod | anlam | dayanak |
+|---|---|---|
+| `0` | ANC (gürültü engelleme) | dinleme: dışarıdan ses gelmiyor |
+| `1` | kapalı | **çıkarım** — 0 ile 2 arasında kaldığı için |
+| `2` | ambient (ortam sesi) | dinleme: en çok dış ses |
+
+Sol kulaklığa tek dokunuş bu üçünü döndürüyor: `2 → 0 → 1 → …`
+
+`byte[1]` = ambient seviyesi, Sony aralığı **0–20**; ölçümde `0x14` = 20, yani
+tavan. `byte[2]` = `0xFF` placeholder (H5'te de aynı desen), `byte[3]` = `0x00`.
+
+⚠️ mod `1`'in "kapalı" olduğu doğrudan doğrulanmadı, iki uçtan çıkarıldı.
 
 **`0x06` extension için kritik:** batarya, ses ve balance'ı tek round-trip'te
 veriyor. Quick Settings panelinin poll'u beş ayrı GET yerine bunu kullanmalı.

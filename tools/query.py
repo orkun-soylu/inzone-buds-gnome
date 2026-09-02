@@ -216,7 +216,14 @@ def main():
     events = sorted(EVENT_ID) if args.scan else [int(args.event, 0)]
     payload = bytes.fromhex(args.payload.replace(" ", "")) if args.payload else b""
     etype = ETYPE_SET if args.do_set else ETYPE_GET
-    cksums = [args.cksum_lo] if args.cksum_lo is not None else [6, 5, 4, 7]
+    if args.cksum_lo is not None:
+        cksums = [args.cksum_lo]
+    elif args.do_set:
+        # Yazma checksum'i sahada dogrulandi (buf[6..N]). SET'i yanlis
+        # checksum'larla tekrarlamak istenmez — tek deneme.
+        cksums = [6]
+    else:
+        cksums = [6, 5, 4, 7]
 
     tid = 1
     answered = False
@@ -231,7 +238,7 @@ def main():
                     print("\n-> %s %s(0x%02X) %s  tid=%d cksum_lo=%d" % (
                         addr_str(address), name, event_id,
                         "SET" if args.do_set else "GET", tid, cl))
-                    if args.raw:
+                    if args.raw or args.do_set:
                         print("   ham: %s" % cmd[:n + 2].hex(" "))
                     try:
                         os.write(fd, cmd)
@@ -242,6 +249,12 @@ def main():
                     if got:
                         answered = True
                         print("   (cevap geldi — cksum_lo=%d calisiyor)" % cl)
+                        if args.do_set:
+                            # SET'ten sonra GET ile gercekten degisti mi bak.
+                            tid += 1
+                            print("\n-> dogrulama GET %s(0x%02X) tid=%d" % (name, event_id, tid))
+                            os.write(fd, build_command(address, event_id, ETYPE_GET, tid, b"", cl))
+                            drain(fd, args.timeout, raw=args.raw, want=event_id)
                         break
                     print("   (cevap yok)")
                 if answered and not args.scan:

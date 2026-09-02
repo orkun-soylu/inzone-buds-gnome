@@ -57,7 +57,7 @@ EVENT_ID = {
     0x22: "GAME_CHAT_MIX_BALANCE",
     0x23: "SIDETONE_VOLUME",
     0x24: "MIC_VOLUME",
-    0x41: "NOISE_CONTROL?",     # ANC/ambient — dugmeye basinca 02/00/01 gozlendi
+    0x41: "NOISE_CONTROL",      # ANC/kapali/ambient + ambient seviyesi (0-20)
     0x42: "UNKNOWN_42",
     0x43: "UNKNOWN_43",
 }
@@ -156,11 +156,14 @@ def describe_payload(event_id, p):
         if len(p) == 2:  # H5 sekli
             return "batarya: %s" % one(p[0], p[1])
     if event_id == 0x41 and len(p) >= 2:
-        # OLCULDU 2026-09-02: kulaklik dugmesiyle mod dondurulunce ilk byte
-        # 02 -> 00 -> 01 degisti. Ikinci byte 0x14=20 (Sony ambient araligi 0-20).
-        mode = {0: "mod-0", 1: "mod-1", 2: "mod-2"}.get(p[0], "mod-%d" % p[0])
-        return "gurultu kontrolu: %s, seviye=%d  (mod->ANC/ambient eslesmesi dogrulanmadi)" % (
-            mode, p[1])
+        # OLCULDU 2026-09-02, sol kulaklik tek dokunusla dondurulerek:
+        #   mod 0 -> disaridan ses YOK        -> ANC
+        #   mod 2 -> en cok dis ses           -> ambient
+        #   mod 1 -> aradaki                  -> kapali (CIKARIM, kullanici
+        #            mod 0 ve 2'yi bildirdi; 1 ikisinin arasinda kaldigi icin)
+        # byte[1] = ambient seviyesi, Sony araligi 0-20 (0x14 = tavan).
+        mode = {0: "ANC", 1: "kapali?", 2: "ambient"}.get(p[0], "bilinmeyen-%d" % p[0])
+        return "gurultu kontrolu: %s, ambient seviyesi=%d/20" % (mode, p[1])
     if event_id == 0x02:
         runs, cur = [], b""
         for b in p:
