@@ -1,0 +1,26 @@
+# INZONE Buds event_id taramasi 0x00..0xFF
+
+EVENT_ID               adres     event_type      payload
+------------------------------------------------------------------------------
+2GHZ_CONNECT_STATUS(0x01) PC->TX    RET(0x10)       01 01
+UNKNOWN(0x02)          PC->RX    RET(0x10)       04 02 ff ff ff 00 31 30 32 30 31 31 33 00 31 30 32 30 31 31 33 00 31 30 32 30 31 31 33 00 01 01   <-- YENI
+UNKNOWN(0x03)          PC->RX    RET(0x10)       03 00 40 00 03 00 40 00 03 00 40 00   <-- YENI
+BATTERY_INFO(0x04)     PC->RX    RET(0x10)       00 63 00 62 ff 64
+UNKNOWN(0x05)          PC->TX    RET(0x10)       00   <-- YENI
+UNKNOWN(0x06)          PC->RX    RET(0x10)       04 00 63 00 62 ff 64 00 1c ff 32 00 ff   <-- YENI
+UNKNOWN(0x07)          PC->RX    RET(0x10)       00 ff ff 01 14 ff 00 01 01 01   <-- YENI
+UNKNOWN(0x08)          PC->RX    RET(0x10)       03 ff ff ff ff 0f ff 00 01 00   <-- YENI
+UNKNOWN(0x09)          PC->RX    RET(0x10)       00   <-- YENI
+UNKNOWN(0x09)          PC->TX    RET(0x10)       00   <-- YENI
+UNKNOWN(0x20)          PC->TX    NTFY_ACTIVE(0xA0) 02 14 ff 00   <-- YENI
+HEADPHONE_VOLUME(0x21) PC->RX    RET(0x10)       00 1c ff
+HEADPHONE_VOLUME(0x21) PC->TX    NTFY_ACTIVE(0xA0) 00 1d ff
+GAME_CHAT_MIX_BALANCE(0x22) PC->RX    NTFY_ACTIVE(0xA0) 00 1e ff
+GAME_CHAT_MIX_BALANCE(0x22) PC->RX    RET(0x10)       32
+SIDETONE_VOLUME(0x23)  PC->RX    RET(0x10)       00 ff
+MIC_VOLUME(0x24)       PC->RX    RET(0x10)       00 ff ff
+UNKNOWN(0x2A)          PC->TX    NTFY_ACTIVE(0xA0) 00 14 ff 00   <-- YENI
+UNKNOWN(0x36)          PC->RX    NTFY_ACTIVE(0xA0) 01 14 ff 00   <-- YENI
+UNKNOWN(0x41)          PC->RX    RET(0x10)       01 14 ff 00   <-- YENI
+UNKNOWN(0x42)          PC->RX    RET(0x10)       01 01 01   <-- YENI
+UNKNOWN(0x43)          PC->RX    RET(0x10)       03   <-- YENI

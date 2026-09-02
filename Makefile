@@ -6,7 +6,7 @@ UDEV    := /etc/udev/rules.d/60-inzone.rules
 .PHONY: help check install uninstall udev udev-uninstall pack
 
 help:
-	@echo "make check           — sozdizimi + protokol testleri (donanim gerekmez)"
+	@echo "make check           — sozdizimi + protokol testleri (node gerekir)"
 	@echo "make install         — extension'i ~/.local/share/... altina kur"
 	@echo "make uninstall       — kaldir"
 	@echo "make udev            — hidraw erisim kuralini kur (sudo)"
@@ -31,7 +31,11 @@ check:
 	@echo "== protokol testleri (Python)"
 	@python3 tools/selftest.py | tail -3
 
-install: check
+# BILEREK 'check'e bagimli DEGIL. Bagimliyken hedef makinede node kurulu
+# olmadiginda 'make install' testlerde durup kurulumu hic yapmiyordu, ustelik
+# cikti "kuruldu" satirini icermedigi icin bu fark edilmiyordu. Testler
+# gelistirme makinesinde kosar; kurulum yalnizca dosya kopyalar.
+install:
 	@mkdir -p $(DEST)
 	@cp -f $(SRC)/*.js $(SRC)/metadata.json $(DEST)/
 	@echo "kuruldu: $(DEST)"
