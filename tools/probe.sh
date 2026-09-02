@@ -37,8 +37,20 @@ for d in /sys/class/hidraw/hidraw*; do
         *:0000054C:00000EC2)
             found=1
             desc=$d/device/report_descriptor
-            hex=$(xxd -p "$desc" 2>/dev/null | tr -d '\n')
+            # xxd her kurulumda yok (vim-common'dan gelir). Hatayi YUTMA —
+            # bos hex "0xFF04 yok" gibi gorunur ve yanlis teshise goturur.
+            if command -v xxd >/dev/null; then
+                hex=$(xxd -p "$desc" | tr -d '\n')
+            elif command -v od >/dev/null; then
+                hex=$(od -An -v -tx1 "$desc" | tr -d ' \n')
+            else
+                hex=$(python3 -c 'import sys;print(open(sys.argv[1],"rb").read().hex())' "$desc")
+            fi
             size=$(( ${#hex} / 2 ))
+            if [ "$size" = 0 ]; then
+                echo "  ! $node: report_descriptor okunamadi (root musun?)"
+                continue
+            fi
             # Usage Page (16-bit) 0xFF04  ->  06 04 ff
             if [[ "$hex" == *"0604ff"* ]]; then
                 mark=$'\033[32mVENDOR 0xFF04  <-- KONTROL KANALI\033[0m'
@@ -56,5 +68,10 @@ for d in /sys/class/hidraw/hidraw*; do
 done
 [ "$found" = 1 ] || echo "  ! $VID:$PID için hidraw node yok — dongle takılı değil ya da kernel bağlamamış"
 
+say "Descriptor çözümü"
+if [ "$found" = 1 ] && command -v python3 >/dev/null; then
+    python3 "$(dirname "$0")/parse_desc.py" 2>&1 || echo "  (parse_desc.py çalışmadı)"
+fi
+
 say "Sonraki adım"
-echo "  sudo ./tools/sniff.py          # 0xFF04 node'unu otomatik seçip pasif dinler"
+echo "  sudo ./tools/query.py          # GET yollayıp cevabı bekler (ilk yazma adımı)"

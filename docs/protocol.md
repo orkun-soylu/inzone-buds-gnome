@@ -67,6 +67,20 @@ push'ları TID=1 taşıyor, yeniden kullanılırsa push cevap sanılır.
 | `0x23` | SIDETONE_VOLUME | `[seviye, 0xFF]` — aralık doğrulanmamış |
 | `0x24` | MIC_VOLUME | `[mute, seviye, 0xFF]` — aralık doğrulanmamış |
 
+## Saha bulguları (2026-09-02, laptop)
+
+`054c:0ec2` takılı, `/dev/hidraw6`, report descriptor **158 byte** ve içinde
+`06 04 ff` var — yani **`0xFF04` vendor collection mevcut.** Kontrol kanalı
+fiziksel olarak orada.
+
+⚠️ **Dongle kendiliğinden yayın yapmıyor.** Müzik çalarken 3 dakika pasif
+dinlemede *sıfır* rapor geldi. HeadsetControl'ün buds sürücüsündeki "the dongle
+sends unsolicited HID reports" ifadesi genel durum için yanlış; o raporlar
+muhtemelen yalnızca belirli olaylarda (bağlanma, kutuya koyma) çıkıyor.
+
+Sonuç: veri almak için **önce host'un GET yollaması gerekiyor** — tıpkı H5
+sürücüsünün `exchange()` deseni gibi. `tools/query.py` bunu yapıyor.
+
 ## Buds'ın aynı protokolü konuştuğu tezi
 
 HeadsetControl'ün buds sürücüsü protokolü bilmiyor: hiç komut yollamıyor, sadece

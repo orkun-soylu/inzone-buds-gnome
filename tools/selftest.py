@@ -5,6 +5,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sniff import parse, describe_payload, addr_str  # noqa: E402
+from query import build_command, ADDR_PC_TO_RX, ETYPE_GET  # noqa: E402
+from parse_desc import parse as parse_desc  # noqa: E402
 
 
 def build_event(event_id, event_type, payload, tid=1, address=0x14):
@@ -83,6 +85,38 @@ print("\n6) Checksum aralik kesfi")
 kind, info = parse(frame)
 check("buf[5..N] araligi eslesenler arasinda", 5 in info["checksum_matching_ranges"],
       str(info["checksum_matching_ranges"]))
+
+print("\n7) build_command duzeni (H5 buildCommand ile ayni olmali)")
+cmd = build_command(ADDR_PC_TO_RX, 0x04, ETYPE_GET, tid=2)
+check("hid_length = 12 (payload yok)", cmd[1] == 12, "%d" % cmd[1])
+check("hci_type = 0x01 COMMAND", cmd[2] == 0x01)
+check("opcode = 0xFC00 (LE: 00 FC)", cmd[3] == 0x00 and cmd[4] == 0xFC)
+check("param_length = 8", cmd[5] == 8)
+check("sony key = 96 C3", cmd[6] == 0x96 and cmd[7] == 0xC3)
+check("address = 0x41 (PC->RX)", cmd[8] == 0x41)
+check("event_id / event_type", cmd[9] == 0x04 and cmd[10] == 0x01)
+check("tid LE", cmd[11] == 2 and cmd[12] == 0)
+check("checksum konumu buf[13]", cmd[13] == (sum(cmd[6:13]) & 0xFF), "0x%02x" % cmd[13])
+check("rapor tam 64 byte", len(cmd) == 64)
+cmd_p = build_command(ADDR_PC_TO_RX, 0x23, 0x02, tid=5, payload=bytes([25, 0xFF]))
+check("payload'lu: hid_length = 14", cmd_p[1] == 14)
+check("payload'lu: checksum buf[15]", cmd_p[15] == (sum(cmd_p[6:15]) & 0xFF))
+check("payload yerinde", cmd_p[13] == 25 and cmd_p[14] == 0xFF)
+
+print("\n8) HID descriptor cozumleyici")
+desc = bytes([0x06, 0x04, 0xFF, 0x09, 0x02, 0xA1, 0x01, 0x85, 0x02,
+              0x75, 0x08, 0x95, 0x3F, 0x09, 0x03, 0x81, 0x02,
+              0x09, 0x04, 0x91, 0x02, 0xC0])
+cols = parse_desc(desc)
+check("tek top-level collection", len(cols) == 1, str(cols))
+if cols:
+    up, ug, reports = cols[0]
+    check("usage_page = 0xFF04", up == 0xFF04, "0x%04X" % up)
+    check("usage = 0x0002", ug == 0x0002)
+    check("report id 0x02 bulundu", 2 in reports, str(reports))
+    if 2 in reports:
+        check("Input = 63 byte", reports[2].get("In") == 63 * 8, str(reports[2]))
+        check("Output = 63 byte (yazma mumkun)", reports[2].get("Out") == 63 * 8, str(reports[2]))
 
 print("\n" + "=" * 60)
 if fails:
