@@ -195,7 +195,7 @@ Ham descriptor:
 ⚠️ H5 sürücüsü `0xFF04` için usage `0x0002` diyor, buds'ta usage `0x0001`.
 Vendor collection'ı usage'a göre değil, **usage_page'e göre** seç.
 
-## `0x8x` bloğu — yetenek/tanım tablosu (açık uç)
+## `0x8x` bloğu — yetenek/tanım tablosu
 
 `--sweep 0x44-0xff` taramasında yalnızca `0x8x` aralığı cevap verdi:
 
@@ -208,19 +208,57 @@ Vendor collection'ı usage'a göre değil, **usage_page'e göre** seç.
 | `0x86` | `05 01 02 04 00 01 02 04` | iki grup, mod listesi olabilir |
 | `0x87` | `00 00 01 00` | |
 | `0x89` | `00 00 00 00 00 00` | **EQ adayı** — 6 byte / 6 bant |
-| `0x8C` | ~115 byte, **çok parçalı** | yetenek tablosu, aşağıya bak |
-| `0x8D` | 31 byte, `0x8C`'ye benzer yapı | |
+| `0x8C` | 2×112 byte, **çok parçalı** | yetenek tablosu — **çözüldü**, aşağıya bak |
+| `0x8D` | 2×12 byte | `0x8C`'nin aynı grameri, iki kayıtlık kısaltması |
 | `0x8E` | `00` | |
 
-⚠️ **`0x8C` çok parçalı cevap veriyor:** aynı `tid` ile arka arkaya birden fazla
-çerçeve geliyor (payload tavanı 50 byte, blob daha uzun). Tek çerçeve okuyup
-bırakan bir istemci veriyi yarım alır.
+### `0x8C` / `0x8D` çözüldü (2026-09-03, yakalamadan — donanımsız)
 
-Birleştirilmiş blobda tekrar eden `01 20 21 22 23 24 70 71 72` listeleri var —
-bunlar **event_id listeleri**, yani `0x8C` "hangi event'ler destekleniyor"
-tablosu. İçinde `0x70`, `0x71`, `0x72` geçiyor ama **bu üçü düz GET'e cevap
-vermedi** — başka bir erişim biçimleri olmalı (payload'lu GET, ya da yalnızca
-SET). `0x20` için de aynı durum.
+`tools/parse_caps.py` yakalamayı yeniden çözümlüyor. Gramerin doğruluk ölçütü
+sert: dört parçanın **dördünde de artan 0 byte** kalıyor.
+
+```
+$ ./tools/parse_caps.py captures/sweep-hi.txt
+```
+
+⚠️ **Çok parçalı cevap:** aynı `tid` ile arka arkaya birden fazla çerçeve geliyor
+(payload tavanı 50 byte). Tek çerçeve okuyup bırakan bir istemci veriyi yarım
+alır. Parçalar `01 00 10` ile ayrılıyor — bu üç byte **framing**, tablo içeriği
+değil. (`0x8D`'de de aynı ayraç var; oradaki 31 byte da eksik değil, tam.)
+
+```
+[0..3]   cevap başlığı  02 00 00 00
+parça    <tür> <kayıtlar…>                parçalar arasında  01 00 10
+BÖLÜM 1  <id> <count:LE16> <count × (slot, değer)>
+ayraç    <kendi kimliği>
+BÖLÜM 2  <00> <count>, ardından  <slot> <id> <len:LE16> <len-1 byte>
+kapanış  BÖLÜM 1 grameriyle tek kayıt, id=0xFF, hepsi sıfır
+```
+
+`0x8C`'nin çözülmüş hâli (iki parça da aynı içerik):
+
+| bölüm | içerik |
+|---|---|
+| BÖLÜM 1 | `id=00` → `00:01 01:00 02:00 07:70` · `id=10` → `00:23 01:00 02:00 07:24` · `id=70` → `00:71 01:00 02:00 07:72` · `id=20` → `00:20 01:21 02:22 07:00` |
+| kendi kimliği | `71` (PC→RX cevabı) / `72` (PC→TX cevabı) |
+| BÖLÜM 2 | slot `00`→id `23`, `01`→`24`, `02`→`01`, `07`→`70`; dördünün de listesi `01 20 21 22 23 24 70 71 72` (yalnız `07`'de sonda fazladan `10`) |
+| kapanış | `id=ff`, dört slot da sıfır |
+
+**Ana bulgu — `0x70`/`0x71`/`0x72` ayar değil, cihaz kimliği.** İki parça 112
+byte'ın **yalnızca birinde** ayrışıyor (offset 45): kulaklığa sorulunca `0x71`,
+dongle'a sorulunca `0x72`. Yani o byte "bu cevabı veren kim" alanı. `id=70`
+kaydının slot `00`'ı `71`'i, slot `07`'si `72`'yi gösteriyor — kendi içinde
+tutarlı. Bu, `0x70`–`0x72`'nin **düz GET'e neden cevap vermediğini açıklıyor**:
+sorgulanacak event değiller, adresleme alanı.
+
+⚠️ **`slot` uzayı {`00`, `01`, `02`, `07`} `event_id` uzayı DEĞİL.** Aynı sayılar
+gerçek event_id olarak da var (`0x01` 2GHZ_CONNECT_STATUS, `0x02` DEVICE_INFO…);
+ikisini karıştırma. Slotlar her iki bölümde de ortak.
+
+⚠️ **Liste "desteklenen tüm event'ler" değil.** `01 20 21 22 23 24 70 71 72`
+içinde çalıştığı ölçülmüş `0x04` (batarya), `0x06` (toplu durum) ve `0x41`
+(gürültü kontrolü) **yok**. Tablo yalnızca ses ayarları öbeğini kapsıyor —
+**EQ/spatial buradan çıkmıyor**, oraya başka yoldan bakılmalı.
 
 **`0x89` en umut verici açık uç.** Altı sıfır byte; BudsLink Sony modellerinde
 `equalizerSixBands` bayrağı taşıyor ve INZONE Hub'da EQ var. Doğrulanmadı —
