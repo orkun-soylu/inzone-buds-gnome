@@ -56,16 +56,41 @@ gerçekten tuttuğunu ölçüyor, varsayım yapmıyor.
 GET/SET yollarken TID eşleştirilmeli. **TID 0 ve 1 kullanılmaz** — dongle'ın kendi
 push'ları TID=1 taşıyor, yeniden kullanılırsa push cevap sanılır.
 
-## event_id — H5'ten bilinenler
+## event_id haritası
 
-| ID | İsim | Payload |
-|---|---|---|
-| `0x01` | 2GHZ_CONNECT_STATUS | — |
-| `0x04` | BATTERY_INFO | H5: `[şarj, yüzde]` · Buds: `[şarj, yüzde] × (sağ, sol, kutu)` |
-| `0x21` | HEADPHONE_VOLUME | 0..50 |
-| `0x22` | GAME_CHAT_MIX_BALANCE | 0..90, 10'ar adım (0=full game) |
-| `0x23` | SIDETONE_VOLUME | `[seviye, 0xFF]` — aralık doğrulanmamış |
-| `0x24` | MIC_VOLUME | `[mute, seviye, 0xFF]` — aralık doğrulanmamış |
+`--sweep 0x00-0x43` taramasından (2026-09-02, PC→RX ve PC→TX). `?` = tahmin.
+
+| ID | İsim | Gözlenen payload | Yorum |
+|---|---|---|---|
+| `0x01` | 2GHZ_CONNECT_STATUS | `01 01` (TX) | dongle cevaplıyor, kulaklık değil |
+| `0x02` | DEVICE_INFO? | `04 02 ff ff ff 00` + `"1020113"`×3 + `01 01` | ASCII firmware sürümü, sol/sağ/kutu |
+| `0x03` | CAPABILITY? | `03 00 40 00` × 3 | cihaz başına sabit üçlü |
+| `0x04` | BATTERY_INFO | `00 63 00 62 ff 64` | `[durum, %] × (sağ, sol, kutu)` |
+| `0x05` | DONGLE_STATE? | `00` (TX) | |
+| `0x06` | **STATUS_BULK?** | `04 · 00 63 00 62 ff 64 · 00 1c ff · 32 · 00 ff` | **batarya + ses + balance tek cevapta** |
+| `0x07` | STATUS_BULK2? | `00 ff ff 01 14 ff 00 01 01 01` | içinde `0x41` payload'ı (`01 14 ff 00`) |
+| `0x08` | — | `03 ff ff ff ff 0f ff 00 01 00` | |
+| `0x09` | — | `00` (RX ve TX) | |
+| `0x21` | HEADPHONE_VOLUME | `00 1c ff` | **byte[1] = ses**; tuşla `1c→1d→1e` ilerledi |
+| `0x22` | GAME_CHAT_MIX_BALANCE | `32` (=50) | 0..90, 10'ar adım |
+| `0x23` | SIDETONE_VOLUME | `00 ff` | |
+| `0x24` | MIC_VOLUME | `00 ff ff` | |
+| `0x41` | **NOISE_CONTROL?** | `01 14 ff 00` | **byte[0] = mod**, düğmeyle `02→00→01`; byte[1]=`0x14`=20 |
+| `0x42` | — | `01 01 01` | |
+| `0x43` | — | `03` | |
+
+**`0x41` en önemli bulgu.** Kullanıcı kulaklık düğmesiyle modu döndürünce üç
+ayrı `NTFY_ACTIVE` push'u geldi ve ilk byte `02 → 00 → 01` değişti. İkinci byte
+`0x14` = 20, Sony'nin ambient sound level aralığının (0–20) üst sınırı.
+**Hangi modun ANC hangisinin ambient olduğu henüz doğrulanmadı.**
+
+**`0x06` extension için kritik:** batarya, ses ve balance'ı tek round-trip'te
+veriyor. Quick Settings panelinin poll'u beş ayrı GET yerine bunu kullanmalı.
+
+⚠️ **Push'lar sorgudan bağımsız gelir ve `tid=1` taşır.** Tarama sırasında araya
+girip yanlış `event_id`'ye atfedilmeleri kolay — gelen çerçeve daima **kendi**
+`event_id`'sine göre kaydedilmeli, sorulan ID'ye göre değil. (`query.py`'de bu
+hata bir kez yapıldı ve düzeltildi.)
 
 ## Saha bulguları (2026-09-02, laptop) — PROTOKOL DOĞRULANDI
 

@@ -41,13 +41,25 @@ HCI_COMMAND, HCI_EVENT = 0x01, 0x04
 SONY_EVENT_CODE = 0xFF
 KEY_LO, KEY_HI = 0x96, 0xC3
 
-EVENT_ID = {  # H5 surucusunden bilinenler; gerisi kesfedilecek
+# H5 surucusunden bilinenler + 2026-09-02 taramasinda buds'ta kesfedilenler.
+# Sonunda "?" olan isimler TAHMIN — payload'dan cikarildi, dogrulanmadi.
+EVENT_ID = {
     0x01: "2GHZ_CONNECT_STATUS",
+    0x02: "DEVICE_INFO?",       # icinde ASCII firmware surumu x3 (sol/sag/kutu)
+    0x03: "CAPABILITY?",        # 3 x "03 00 40 00" — cihaz basina sabit
     0x04: "BATTERY_INFO",
+    0x05: "DONGLE_STATE?",      # sadece TX cevapliyor, tek byte
+    0x06: "STATUS_BULK?",       # batarya + ses + balance tek cevapta
+    0x07: "STATUS_BULK2?",      # icinde noise control (0x41) payload'i var
+    0x08: "UNKNOWN_08",
+    0x09: "UNKNOWN_09",
     0x21: "HEADPHONE_VOLUME",
     0x22: "GAME_CHAT_MIX_BALANCE",
     0x23: "SIDETONE_VOLUME",
     0x24: "MIC_VOLUME",
+    0x41: "NOISE_CONTROL?",     # ANC/ambient — dugmeye basinca 02/00/01 gozlendi
+    0x42: "UNKNOWN_42",
+    0x43: "UNKNOWN_43",
 }
 EVENT_TYPE = {0x01: "GET", 0x02: "SET", 0x10: "RET", 0x20: "NTFY", 0xA0: "NTFY_ACTIVE"}
 ADDR = {0x1: "PC", 0x2: "TX", 0x4: "RX"}
@@ -143,9 +155,36 @@ def describe_payload(event_id, p):
                 for i, lab in enumerate(("sag", "sol", "kutu")))
         if len(p) == 2:  # H5 sekli
             return "batarya: %s" % one(p[0], p[1])
+    if event_id == 0x41 and len(p) >= 2:
+        # OLCULDU 2026-09-02: kulaklik dugmesiyle mod dondurulunce ilk byte
+        # 02 -> 00 -> 01 degisti. Ikinci byte 0x14=20 (Sony ambient araligi 0-20).
+        mode = {0: "mod-0", 1: "mod-1", 2: "mod-2"}.get(p[0], "mod-%d" % p[0])
+        return "gurultu kontrolu: %s, seviye=%d  (mod->ANC/ambient eslesmesi dogrulanmadi)" % (
+            mode, p[1])
+    if event_id == 0x02:
+        runs, cur = [], b""
+        for b in p:
+            if 0x20 <= b < 0x7F:
+                cur += bytes([b])
+            else:
+                if len(cur) >= 4:
+                    runs.append(cur.decode("ascii"))
+                cur = b""
+        if len(cur) >= 4:
+            runs.append(cur.decode("ascii"))
+        if runs:
+            return "metin alanlari: %s" % ", ".join(repr(r) for r in runs)
+    if event_id == 0x06 and len(p) >= 13:
+        # OLCULDU: 04 | batarya(6) | ses(3) | balance(1) | ? (2)
+        bat = describe_payload(0x04, p[1:7])
+        return "toplu durum: %s | ses=%d | balance=%d | kuyruk=%s" % (
+            bat.replace("batarya: ", "batarya "), p[8], p[10], p[11:].hex(" "))
     if event_id == 0x22 and p:
         return "game/chat balance = %d (0=full game, 90=full chat)" % p[0]
-    if event_id in (0x21, 0x23, 0x24) and p:
+    if event_id == 0x21 and len(p) >= 2:
+        # OLCULDU: ses tusuna basinca ikinci byte 1c -> 1d -> 1e ilerledi
+        return "ses seviyesi = %d" % p[1]
+    if event_id in (0x23, 0x24) and p:
         return "seviye = %s" % " ".join("%d" % b for b in p)
     if event_id == 0x01 and p:
         return "2.4GHz baglanti durumu = %s" % p.hex()

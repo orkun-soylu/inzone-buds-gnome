@@ -111,20 +111,31 @@ def sweep(fd, addresses, lo, hi, timeout, raw=False, out=None):
                     print("  0x%02X yazma hatasi: %s" % (event_id, e))
                     continue
                 for info in drain(fd, timeout, raw=raw):
-                    found.setdefault(event_id, []).append(
-                        (address, info["event_type"], info["payload"].hex(" ")))
+                    # ⚠️ Cerceveyi SORULAN event_id'ye degil, KENDI event_id'sine yaz.
+                    # Dongle NTFY_ACTIVE push'lari (tid=1) sorgudan bagimsiz araya
+                    # girer; loop degiskenine yazmak haritayi bozar.
+                    got_id = info["event_id"]
+                    solicited = info["event_type"] != 0xA0 and got_id == event_id
+                    found.setdefault(got_id, []).append(
+                        (address if solicited else None,
+                         info["event_type"], info["payload"].hex(" ")))
     except KeyboardInterrupt:
         print("\n(tarama kesildi)")
 
     lines = []
-    lines.append("%-22s %-9s %-15s %s" % ("EVENT_ID", "adres", "event_type", "payload"))
+    lines.append("%-24s %-9s %-17s %s" % ("EVENT_ID", "adres", "event_type", "payload"))
     lines.append("-" * 78)
     for event_id in sorted(found):
+        seen_rows = set()
         for address, etype, phex in found[event_id]:
+            row = (address, etype, phex)
+            if row in seen_rows:
+                continue
+            seen_rows.add(row)
             name = EVENT_ID.get(event_id)
-            lines.append("%-22s %-9s %-15s %s%s" % (
+            lines.append("%-24s %-9s %-17s %s%s" % (
                 "%s(0x%02X)" % (name or "UNKNOWN", event_id),
-                addr_str(address),
+                addr_str(address) if address is not None else "push",
                 "%s(0x%02X)" % (EVENT_TYPE.get(etype, "?"), etype),
                 phex or "-",
                 "" if name else "   <-- YENI"))
