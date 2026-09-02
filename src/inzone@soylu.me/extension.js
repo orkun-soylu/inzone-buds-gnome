@@ -31,6 +31,7 @@ class SliderRow extends PopupMenu.PopupBaseMenuItem {
         this.add_child(this.slider);
 
         this._pendingId = 0;
+        this._suppress = false;
         this._onChange = onChange;
         this.slider.connect('notify::value', () => {
             if (this._suppress)
@@ -161,8 +162,10 @@ class InzoneToggle extends QuickMenuToggle {
             : (b.left === b.right
                 ? `${low}%`
                 : `S ${b.left ?? '–'}% · Sğ ${b.right ?? '–'}%`);
+        // String.prototype.format'a guvenme — Shell kendi ortamina kuruyor ama
+        // extension'in bagli olmasi gereken bir sozlesme degil.
         this.menu.setHeader('audio-headphones-symbolic', _('INZONE Buds'),
-            low === null ? null : _('Pil %d%%').format(low));
+            low === null ? null : `${_('Pil')} ${low}%`);
     }
 });
 
