@@ -79,6 +79,19 @@ push'ları TID=1 taşıyor, yeniden kullanılırsa push cevap sanılır.
 | `0x42` | — | `01 01 01` | |
 | `0x43` | — | `03` | |
 
+### Dokunmatik kontroller (Sony varsayılanı)
+
+Fiziksel düğme yok. Dongle üzerinden geçerli olan varsayılan atamalar:
+
+| Hareket | Sol | Sağ |
+|---|---|---|
+| Tek dokunuş | gürültü engelleme ↔ ambient geçişi → `0x41` | ses yükselt → `0x21` |
+| Dokun ve tut | mikrofon kontrolü | ses azalt |
+| Çift / üç dokunuş | dongle'da işlevsiz | dongle'da işlevsiz |
+
+Atamalar INZONE Hub / Sony Sound Connect ile değiştirilebiliyor, yani bir
+`event_id`'nin arkasında bu eşleme de olmalı (henüz bulunmadı).
+
 **`0x41` en önemli bulgu.** Kullanıcı kulaklık düğmesiyle modu döndürünce üç
 ayrı `NTFY_ACTIVE` push'u geldi ve ilk byte `02 → 00 → 01` değişti. İkinci byte
 `0x14` = 20, Sony'nin ambient sound level aralığının (0–20) üst sınırı.

@@ -63,7 +63,10 @@ def main():
         sys.exit("HATA: izin yok, 'sudo' ile calistir.")
 
     print("Node: %s   izlenen: %s" % (node, ", ".join(name_of(e) for e in events)))
-    print("\nSimdi kulaklikta TEK bir ayari degistir (ANC dugmesi, ses, kulakligi cikar).")
+    print("\nSimdi TEK bir ayari degistir. Fiziksel dugme yok, dokunmatik panel var:")
+    print("  SOL kulaklik, tek dokunus  -> gurultu engelleme <-> ambient gecisi (0x41)")
+    print("  SAG kulaklik, tek dokunus  -> ses yukselt (0x21)")
+    print("  SAG kulaklik, dokun ve tut -> ses azalt")
     print("Degisen byte'lar asagida cikacak. Ctrl-C ile bitir.\n")
 
     state = {}
