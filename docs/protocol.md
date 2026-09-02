@@ -195,6 +195,39 @@ Ham descriptor:
 ⚠️ H5 sürücüsü `0xFF04` için usage `0x0002` diyor, buds'ta usage `0x0001`.
 Vendor collection'ı usage'a göre değil, **usage_page'e göre** seç.
 
+## `0x8x` bloğu — yetenek/tanım tablosu (açık uç)
+
+`--sweep 0x44-0xff` taramasında yalnızca `0x8x` aralığı cevap verdi:
+
+| ID | payload | not |
+|---|---|---|
+| `0x81` | `0f` | |
+| `0x83` | `00` | |
+| `0x84` | `01` | |
+| `0x85` | `00` | |
+| `0x86` | `05 01 02 04 00 01 02 04` | iki grup, mod listesi olabilir |
+| `0x87` | `00 00 01 00` | |
+| `0x89` | `00 00 00 00 00 00` | **EQ adayı** — 6 byte / 6 bant |
+| `0x8C` | ~115 byte, **çok parçalı** | yetenek tablosu, aşağıya bak |
+| `0x8D` | 31 byte, `0x8C`'ye benzer yapı | |
+| `0x8E` | `00` | |
+
+⚠️ **`0x8C` çok parçalı cevap veriyor:** aynı `tid` ile arka arkaya birden fazla
+çerçeve geliyor (payload tavanı 50 byte, blob daha uzun). Tek çerçeve okuyup
+bırakan bir istemci veriyi yarım alır.
+
+Birleştirilmiş blobda tekrar eden `01 20 21 22 23 24 70 71 72` listeleri var —
+bunlar **event_id listeleri**, yani `0x8C` "hangi event'ler destekleniyor"
+tablosu. İçinde `0x70`, `0x71`, `0x72` geçiyor ama **bu üçü düz GET'e cevap
+vermedi** — başka bir erişim biçimleri olmalı (payload'lu GET, ya da yalnızca
+SET). `0x20` için de aynı durum.
+
+**`0x89` en umut verici açık uç.** Altı sıfır byte; BudsLink Sony modellerinde
+`equalizerSixBands` bayrağı taşıyor ve INZONE Hub'da EQ var. Doğrulanmadı —
+denemek için `0x89`'a SET atıp sesi dinlemek, sonra `00 00 00 00 00 00` ile geri
+almak gerekir. Değer aralığı bilinmiyor (Sony genelde 0–20, 10 = düz kullanır;
+altı sıfırın "düz" mü "ayarsız" mı olduğu belirsiz).
+
 ## Buds'ın aynı protokolü konuştuğu tezi
 
 HeadsetControl'ün buds sürücüsü protokolü bilmiyor: hiç komut yollamıyor, sadece

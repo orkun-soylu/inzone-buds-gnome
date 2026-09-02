@@ -1,0 +1,7 @@
+{
+  "uuid": "inzone@soylu.me",
+  "name": "INZONE Buds",
+  "description": "Sony INZONE Buds kontrol paneli — pil, gürültü engelleme, ortam sesi seviyesi ve oyun/sohbet dengesi. USB-C dongle üzerinden çalışır.",
+  "shell-version": ["48"],
+  "version": 1
+}
