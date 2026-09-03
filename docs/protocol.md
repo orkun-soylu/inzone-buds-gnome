@@ -189,9 +189,23 @@ profili tek sink veriyor; sohbet akışına şu an yalnızca ALSA'dan doğrudan
 balance slider'ı pratikte "her şeyi kıs" düğmesi gibi davranır. İkisini birden
 açan bir profil ya da WirePlumber kuralı **yazılmadı** — asıl kazanç orada.
 
-**Açık uç — kuantalama.** Ayarın 10'ar adım mı yoksa serbest mi olduğu
-ölçülmedi; `0x64` (100) ve `0x28` (40) kabul edildi, ara bir değer (`0x37`)
-denenmedi. Extension ihtiyattan 10'a yuvarlıyor (`extension.js`).
+**Kuantalama: 10'ar adım, dayatılıyor (ölçüldü 2026-09-03).** 10'un katı
+olmayan değerler **sessizce reddediliyor** — hata dönmüyor, snap'lenmiyor,
+`NTFY` doğrudan eski değeri geri veriyor:
+
+| SET | `NTFY` | sonuç |
+|---|---|---|
+| `0x37` (55) | `0x64` (100) | reddedildi, değer değişmedi |
+| `0x32` (50) | `0x32` (50) | kabul edildi |
+| `0x64` (100) | `0x64` (100) | kabul edildi |
+
+İkinci satır **kontrol deneyi**: aynı oturumda çalıştığı için `0x37`'nin
+reddini "SET yolu o an ölüydü" diye açıklamak mümkün değil. (`0x89`'da da
+belirleyici olan aynı desen.)
+
+Sonuç: `extension.js`'teki 10'a yuvarlama **zorunluluk**. Olmasaydı slider
+konumlarının çoğu sessizce hiçbir şey yapmayacaktı — kullanıcının "bazen
+çalışıyor bazen çalışmıyor" diye tarif edeceği türden bir bug.
 
 ## Saha bulguları (2026-09-02, laptop) — PROTOKOL DOĞRULANDI
 

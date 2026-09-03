@@ -57,6 +57,12 @@ export const AMBIENT_MAX = 20;   // Sony araligi 0-20
 // dayanaksiz bir varsayimdi: cihaz SET 0x64'u kabul etti ve geri okudu, kirpmadi.
 // Yon de tersti — 0 oyun akisini SUSTURUYOR, 100 tam guclu veriyor.
 export const BALANCE_MAX = 100;  // 0 = tam sohbet (oyun kisik), 100 = tam oyun
+
+// 10'un kati OLMAYAN degerler cihaz tarafindan sessizce REDDEDILIYOR (olculdu
+// 2026-09-03): SET 0x37 (55) icin NTFY eski degeri geri dondu, ayni oturumda
+// SET 0x32 (50) kabul edildi. Yani asagidaki yuvarlama ihtiyat degil zorunluluk
+// -- olmasa slider konumlarinin cogu sessizce hicbir sey yapmazdi.
+export const BALANCE_STEP = 10;
 export const VOLUME_MAX = 50;
 
 /** COMMAND cercevesi kur. payload: sayi dizisi. */

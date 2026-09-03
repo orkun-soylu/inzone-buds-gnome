@@ -106,8 +106,9 @@ class InzoneToggle extends QuickMenuToggle {
         // --- oyun / sohbet dengesi (0-90)
         this._balanceRow = new SliderRow('applications-games-symbolic', value => {
             this._lastUserAction = GLib.get_monotonic_time();
-            // cihaz 10'ar adim bekliyor
-            const step = Math.round(value * Proto.BALANCE_MAX / 10) * 10;
+            // Cihaz 10'ar adim DAYATIYOR — ara degerler sessizce reddediliyor.
+            const step = Math.round(value * Proto.BALANCE_MAX / Proto.BALANCE_STEP)
+                * Proto.BALANCE_STEP;
             this._device.set(Proto.EV.BALANCE, [step]).catch(() => {});
         });
         this.menu.addMenuItem(this._balanceRow);
