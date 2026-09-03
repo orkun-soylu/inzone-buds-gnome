@@ -45,9 +45,11 @@ export const EV = {
     NOISE: 0x41,
 };
 
-// 0x41 byte[0]. Olculdu: 0 = dis ses yok, 2 = en cok dis ses.
-export const NOISE_ANC = 0;
-export const NOISE_OFF = 1;      // CIKARIM: 0 ile 2 arasinda kaldigi icin
+// 0x41 byte[0]. Esleme kullanici tarafindan cihaz uzerinde DOGRULANDI
+// (2026-09-03). Onceki 0=ANC / 1=kapali okumasi YANLISTI; dinleme testinde
+// kapali moddaki pasif yalitim ANC sanilmisti.
+export const NOISE_OFF = 0;
+export const NOISE_ANC = 1;
 export const NOISE_AMBIENT = 2;
 
 export const AMBIENT_MAX = 20;   // Sony araligi 0-20

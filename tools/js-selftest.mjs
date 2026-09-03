@@ -63,8 +63,8 @@ ok('balance = 50', bulk.balance === 50, `${bulk.balance}`);
 
 console.log('\n4) 0x41 gurultu kontrolu');
 for (const [payload, mode, label] of [
-    ['00 14 ff 00', P.NOISE_ANC, 'ANC'],
-    ['01 14 ff 00', P.NOISE_OFF, 'kapali'],
+    ['00 14 ff 00', P.NOISE_OFF, 'kapali'],
+    ['01 14 ff 00', P.NOISE_ANC, 'ANC'],
     ['02 14 ff 00', P.NOISE_AMBIENT, 'ambient'],
 ]) {
     const n = P.decodeNoise(P.parseEvent(buildEvent(P.EV.NOISE, P.NTFY_ACTIVE, [...bytes(payload)], 1)).payload);

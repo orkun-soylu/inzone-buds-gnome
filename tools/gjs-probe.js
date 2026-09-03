@@ -26,7 +26,7 @@ const EVENT_NAMES = {
     0x22: 'GAME_CHAT_MIX_BALANCE',
     0x41: 'NOISE_CONTROL',
 };
-const NOISE_MODES = {0: 'ANC', 1: 'kapali?', 2: 'ambient'};
+const NOISE_MODES = {0: 'kapali', 1: 'ANC', 2: 'ambient'};  // dogrulandi 2026-09-03
 
 function hex(bytes) {
     return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');

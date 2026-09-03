@@ -108,7 +108,7 @@ Atamalar INZONE Hub / Sony Sound Connect ile değiştirilebiliyor, yani bir
 
 ```
 -> PC->RX NOISE_CONTROL(0x41) SET  tid=2  payload=00 14 ff 00
-<- RX->PC NOISE_CONTROL(0x41) NTFY tid=2  payload=00 14 ff 00     (ANC)
+<- RX->PC NOISE_CONTROL(0x41) NTFY tid=2  payload=00 14 ff 00     (kapalı)
 -> PC->RX NOISE_CONTROL(0x41) GET  tid=3
 <- RX->PC NOISE_CONTROL(0x41) RET  tid=3  payload=00 14 ff 00
 ```
@@ -121,16 +121,22 @@ Payload: `[mod, ambient_seviye, 0xFF, 0x00]`
 
 | mod | anlam | dayanak |
 |---|---|---|
-| `0` | ANC (gürültü engelleme) | dinleme: dışarıdan ses gelmiyor |
-| `1` | kapalı | **çıkarım** — 0 ile 2 arasında kaldığı için |
-| `2` | ambient (ortam sesi) | dinleme: en çok dış ses |
+| `0` | kapalı | kullanıcı doğrulaması, cihaz üzerinde (2026-09-03) |
+| `1` | ANC (gürültü engelleme) | kullanıcı doğrulaması, cihaz üzerinde (2026-09-03) |
+| `2` | ambient (ortam sesi) | dinleme + kullanıcı doğrulaması — baştan doğruydu |
 
 Sol kulaklığa tek dokunuş bu üçünü döndürüyor: `2 → 0 → 1 → …`
+(ambient → kapalı → ANC → …)
 
 `byte[1]` = ambient seviyesi, Sony aralığı **0–20**; ölçümde `0x14` = 20, yani
 tavan. `byte[2]` = `0xFF` placeholder (H5'te de aynı desen), `byte[3]` = `0x00`.
 
-⚠️ mod `1`'in "kapalı" olduğu doğrudan doğrulanmadı, iki uçtan çıkarıldı.
+⚠️ **Düzeltme (2026-09-03):** `0` ve `1` daha önce ters yazılmıştı. 2026-09-02
+dinleme testi mod `0`'ı "dışarıdan ses gelmiyor" diye ANC sanmıştı — kulaklık
+kapalı tip, pasif yalıtımı ANC'ye benziyor; mod `1` de "iki ucun arasında"
+diye çıkarılmıştı. İkisi de yanlıştı, eşleme cihaz üzerinde doğrulandı.
+**Ders:** mod etiketini kulakla ayırt etmeye çalışma, cihazın kendi arayüzünden
+teyit et — pasif yalıtım ANC ile karışıyor.
 
 **`0x06` extension için kritik:** batarya, ses ve balance'ı tek round-trip'te
 veriyor. Quick Settings panelinin poll'u beş ayrı GET yerine bunu kullanmalı.

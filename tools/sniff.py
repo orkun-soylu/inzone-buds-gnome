@@ -156,13 +156,15 @@ def describe_payload(event_id, p):
         if len(p) == 2:  # H5 sekli
             return "batarya: %s" % one(p[0], p[1])
     if event_id == 0x41 and len(p) >= 2:
-        # OLCULDU 2026-09-02, sol kulaklik tek dokunusla dondurulerek:
-        #   mod 0 -> disaridan ses YOK        -> ANC
-        #   mod 2 -> en cok dis ses           -> ambient
-        #   mod 1 -> aradaki                  -> kapali (CIKARIM, kullanici
-        #            mod 0 ve 2'yi bildirdi; 1 ikisinin arasinda kaldigi icin)
+        # ESLEME kullanici tarafindan cihaz uzerinde DOGRULANDI (2026-09-03):
+        #   mod 0 -> kapali
+        #   mod 1 -> ANC
+        #   mod 2 -> ambient
+        # 2026-09-02'deki dinleme testi 0'i ANC sanmisti (kapali moddaki pasif
+        # yalitim yaniltti); 1 ise "iki ucun arasinda" diye cikarilmisti. Ikisi
+        # de yanlisti, duzeltildi.
         # byte[1] = ambient seviyesi, Sony araligi 0-20 (0x14 = tavan).
-        mode = {0: "ANC", 1: "kapali?", 2: "ambient"}.get(p[0], "bilinmeyen-%d" % p[0])
+        mode = {0: "kapali", 1: "ANC", 2: "ambient"}.get(p[0], "bilinmeyen-%d" % p[0])
         return "gurultu kontrolu: %s, ambient seviyesi=%d/20" % (mode, p[1])
     if event_id == 0x02:
         runs, cur = [], b""
