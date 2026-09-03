@@ -63,6 +63,36 @@ class SliderRow extends PopupMenu.PopupBaseMenuItem {
     }
 });
 
+/**
+ * Gurultu modu satiri. Shell'in Ornament'ini KULLANMIYOR: Ornament.NONE isaret
+ * ikonunu gorunmez yapiyor ve o da yer kaplamayi birakiyor, secili satirin
+ * yazisi digerlerine gore saga kayiyordu. Kendi ikonumuzu koyup gorunurlugu
+ * degil OPAKLIGI degistiriyoruz — yer her zaman ayrilmis kalir, uc satir da
+ * ayni hizadan baslar.
+ */
+const ModeRow = GObject.registerClass(
+class ModeRow extends PopupMenu.PopupBaseMenuItem {
+    _init(text) {
+        super._init();
+        this.setOrnament(PopupMenu.Ornament.HIDDEN);
+
+        this._check = new St.Icon({
+            styleClass: 'popup-menu-icon',
+            iconName: 'object-select-symbolic',
+            opacity: 0,
+        });
+        this.add_child(this._check);
+
+        const label = new St.Label({text, xExpand: true});
+        this.add_child(label);
+        this.label_actor = label;
+    }
+
+    setSelected(selected) {
+        this._check.opacity = selected ? 255 : 0;
+    }
+});
+
 const InzoneToggle = GObject.registerClass(
 class InzoneToggle extends QuickMenuToggle {
     _init(device) {
@@ -86,7 +116,7 @@ class InzoneToggle extends QuickMenuToggle {
             [Proto.NOISE_OFF, _('Kapalı')],
             [Proto.NOISE_AMBIENT, _('Ortam sesi')],
         ]) {
-            const item = new PopupMenu.PopupMenuItem(label);
+            const item = new ModeRow(label);
             item.connect('activate', () => this._applyMode(mode));
             this.menu.addMenuItem(item);
             this._modeItems.set(mode, item);
@@ -150,10 +180,8 @@ class InzoneToggle extends QuickMenuToggle {
     }
 
     _renderNoise() {
-        for (const [mode, item] of this._modeItems) {
-            item.setOrnament(mode === this._mode
-                ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
-        }
+        for (const [mode, item] of this._modeItems)
+            item.setSelected(mode === this._mode);
         this.checked = this._mode === Proto.NOISE_ANC;
         this._ambientRow.sensitive = this._mode === Proto.NOISE_AMBIENT;
         this._ambientRow.setValueQuiet(this._ambient / Proto.AMBIENT_MAX);
