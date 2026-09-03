@@ -2,7 +2,6 @@ UUID    := inzone@soylu.me
 SRC     := src/$(UUID)
 DEST    := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 UDEV    := /etc/udev/rules.d/60-inzone.rules
-WPCONF  := $(HOME)/.config/wireplumber/wireplumber.conf.d/51-inzone-pro-audio.conf
 
 .PHONY: help check install uninstall udev udev-uninstall wireplumber wireplumber-uninstall pack
 
@@ -61,20 +60,14 @@ udev-uninstall:
 	@sudo udevadm control --reload-rules
 	@echo "kaldirildi: $(UDEV)"
 
-# Oyun/sohbet dengesinin ise yaramasi icin iki sink gerekiyor; gerekce
-# wireplumber/51-inzone-pro-audio.conf basinda. sudo GEREKMEZ, kullanici config'i.
+# Oyun/sohbet dengesinin ise yaramasi icin iki sink gerekiyor. Config kurali
+# TEK BASINA yetmiyor -- WirePlumber'in kayitli default-profile durumu onu
+# eziyor; script ikisini birden hallediyor. sudo gerekmez, kullanici config'i.
 wireplumber:
-	@mkdir -p $(dir $(WPCONF))
-	@cp -f wireplumber/51-inzone-pro-audio.conf $(WPCONF)
-	@systemctl --user restart wireplumber
-	@echo "kuruldu: $(WPCONF)"
-	@echo "Dogrulama: wpctl status | grep -i inzone  -> IKI sink gorunmeli"
-	@echo "(pro-output-0 = oyun, pro-output-1 = sohbet)"
+	@./wireplumber/install.sh
 
 wireplumber-uninstall:
-	@rm -f $(WPCONF)
-	@systemctl --user restart wireplumber
-	@echo "kaldirildi: $(WPCONF)"
+	@./wireplumber/uninstall.sh
 
 pack: check
 	@rm -f $(UUID).zip

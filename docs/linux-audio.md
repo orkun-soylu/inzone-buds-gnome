@@ -54,10 +54,31 @@ yeniden başlatır. Doğrulama:
 wpctl status | grep -i inzone     # IKI sink gorunmeli
 ```
 
-⚠️ **`wpctl set-profile` ile elle seçmek kalıcı değil.** Dongle çıkarılıp
-takılınca WirePlumber `iec958` profiline geri dönüyor (ölçüldü 2026-09-03);
-`wpctl set-default` ile varsayılanı pro-audio node'una taşımak da bunu
-engellemedi. Kalıcılık için yukarıdaki config dosyası gerekiyor.
+### Neden iki katman
+
+Kalıcı hale getirmek beklenenden zor çıktı; üç ayrı şey denendi:
+
+| yöntem | sonuç |
+|---|---|
+| `wpctl set-profile <dev> 5` | o an çalışıyor, **replug'da kayboluyor** — state dosyasına hiç yazmıyor |
+| `wpctl set-default <sink>` | varsayılanı taşıyor ama profili sabitlemiyor |
+| config kuralı (`device.profile`) | **tek başına yetmiyor** — kayıtlı durum onu eziyor |
+
+Belirleyici kanıt: kural kurulduktan sonra cihaz hâlâ `iec958`'deydi ve
+`~/.local/state/wireplumber/default-profile` şu satırı taşıyordu:
+
+```
+alsa_card.usb-Sony_INZONE_Buds-00=output:iec958-stereo+input:mono-fallback
+```
+
+Dosyanın zaman damgası `wpctl set-profile` çağrısından **önceydi** — yani o
+komut state'i hiç güncellememişti. Satır `pro-audio` yapılınca dongle çıkarılıp
+takıldıktan sonra bile iki sink ayakta kaldı.
+
+Bu yüzden `make wireplumber` iki işi birden yapar: config dosyasını kurar
+(temiz makinede kayıtlı durum yokken profili seçmesi için) **ve** state
+satırını düzeltir. State düzenlenmeden önce WirePlumber durdurulur — servis
+çalışırken düzenlenirse çıkarken dosyayı geri yazıp değişikliği ezer.
 
 ### Uygulamaları yönlendirme
 
