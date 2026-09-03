@@ -224,6 +224,16 @@ kullanıcı kulaklıktan kapatınca panel poll beklemeden öğrenebiliyor.
 dört kez tekrarlandı; her seferinde `byte[0]` `00 ↔ 01` gidip geldi. Polarite
 ayrıca ses giriş seviyesine bakılarak sabitlendi.
 
+**SET kabul ediliyor (2026-09-03).** Cihaz `01`'deyken `SET 00 ff ff` → `NTFY`
+`00 ff ff`, doğrulama GET'i de `00`. Yani `0x89`'un aksine salt okunur değil.
+
+⚠️ **İlk SET denemesi hiçbir şey kanıtlamamıştı** ve az kalsın "çalışıyor" diye
+yazılıyordu: cihaz zaten `01`'deyken `SET 01 ff ff` yollanmış, `NTFY` `01`
+dönmüştü. Ama `0x22`'de `55` **reddedilirken de** `NTFY` bir değer döndürmüştü —
+mevcut değeri. Yani "yazdığım değeri geri aldım" ancak yazılan değer eskisinden
+**farklıysa** kanıttır. Kural: SET testini daima mevcut değerden farklı bir
+değerle yap.
+
 ⚠️ **`MIC_VOLUME` adı H5'ten miras yanlış bir etiketti.** `0x21`'de
 (`00 1c ff`) `byte[1]` gerçek bir seviyedir ve tuşla `1c→1d→1e` ilerlediği
 görülmüştü; `0x24`'te aynı konumda sabit `0xFF` var. Ad benzerliğine bakıp
