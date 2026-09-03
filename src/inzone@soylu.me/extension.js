@@ -91,10 +91,12 @@ class InzoneToggle extends QuickMenuToggle {
             this._modeItems.set(mode, item);
         }
 
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
         // --- ortam sesi seviyesi (0-20)
-        this._ambientRow = new SliderRow('audio-input-microphone-symbolic', value => {
+        // Basliksiz duruyordu ve ikonu mikrofondu: kullanici bunu mikrofon
+        // seviyesi sandi. Ikon tek basina iki slider'i ayirt ettirmiyor.
+        this.menu.addMenuItem(
+            new PopupMenu.PopupSeparatorMenuItem(_('Ortam sesi seviyesi')));
+        this._ambientRow = new SliderRow('audio-volume-high-symbolic', value => {
             this._lastUserAction = GLib.get_monotonic_time();
             const level = Math.round(value * Proto.AMBIENT_MAX);
             this._ambient = level;
@@ -103,7 +105,9 @@ class InzoneToggle extends QuickMenuToggle {
         });
         this.menu.addMenuItem(this._ambientRow);
 
-        // --- oyun / sohbet dengesi (0-90)
+        // --- oyun / sohbet dengesi (0-100)
+        this.menu.addMenuItem(
+            new PopupMenu.PopupSeparatorMenuItem(_('Oyun / sohbet dengesi')));
         this._balanceRow = new SliderRow('applications-games-symbolic', value => {
             this._lastUserAction = GLib.get_monotonic_time();
             // Cihaz 10'ar adim DAYATIYOR — ara degerler sessizce reddediliyor.
