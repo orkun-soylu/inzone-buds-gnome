@@ -2,8 +2,9 @@ UUID    := inzone@soylu.me
 SRC     := src/$(UUID)
 DEST    := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 UDEV    := /etc/udev/rules.d/60-inzone.rules
+WPCONF  := $(HOME)/.config/wireplumber/wireplumber.conf.d/51-inzone-pro-audio.conf
 
-.PHONY: help check install uninstall udev udev-uninstall pack
+.PHONY: help check install uninstall udev udev-uninstall wireplumber wireplumber-uninstall pack
 
 help:
 	@echo "make check           — sozdizimi + protokol testleri (node gerekir)"
@@ -11,6 +12,8 @@ help:
 	@echo "make uninstall       — kaldir"
 	@echo "make udev            — hidraw erisim kuralini kur (sudo)"
 	@echo "make udev-uninstall  — kurali kaldir (sudo)"
+	@echo "make wireplumber     — dongle'i Pro Audio profiline sabitle (iki sink)"
+	@echo "make wireplumber-uninstall — kurali kaldir"
 	@echo "make pack            — dagitim icin zip"
 	@echo ""
 	@echo "Kurulumdan sonra oturumu kapatip acmak gerekir (Wayland'de Alt+F2 r yok)."
@@ -57,6 +60,21 @@ udev-uninstall:
 	@sudo rm -f $(UDEV)
 	@sudo udevadm control --reload-rules
 	@echo "kaldirildi: $(UDEV)"
+
+# Oyun/sohbet dengesinin ise yaramasi icin iki sink gerekiyor; gerekce
+# wireplumber/51-inzone-pro-audio.conf basinda. sudo GEREKMEZ, kullanici config'i.
+wireplumber:
+	@mkdir -p $(dir $(WPCONF))
+	@cp -f wireplumber/51-inzone-pro-audio.conf $(WPCONF)
+	@systemctl --user restart wireplumber
+	@echo "kuruldu: $(WPCONF)"
+	@echo "Dogrulama: wpctl status | grep -i inzone  -> IKI sink gorunmeli"
+	@echo "(pro-output-0 = oyun, pro-output-1 = sohbet)"
+
+wireplumber-uninstall:
+	@rm -f $(WPCONF)
+	@systemctl --user restart wireplumber
+	@echo "kaldirildi: $(WPCONF)"
 
 pack: check
 	@rm -f $(UUID).zip
