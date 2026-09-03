@@ -151,11 +151,18 @@ hata bir kez yapıldı ve düzeltildi.)
 Payload tek byte. Dongle bilgisayara iki ayrı USB ses akışı sunuyor (oyun +
 sohbet); bu değer kulaklığın içindeki karışım oranı.
 
-| değer | anlam | dayanak |
+**Gerçek bir çapraz geçiş (crossfade)** — tek akışı kısmıyor, ikisini karşılıklı
+değiştiriyor. İki akış da ayrı ayrı dinlenerek ölçüldü (2026-09-03):
+
+| değer | oyun akışı (`hw:2,0`) | sohbet akışı (`hw:2,1`) |
 |---|---|---|
-| `0` | oyun akışı tamamen kısık | dinleme testi: slider sol uçta Spotify tümüyle sustu |
-| `100` | oyun akışı tam güçte | dinleme testi + `SET 0x64` kabul edildi, geri okundu |
-| `50` | dinlenme değeri | ilk capture (`0x06` içinde de aynı) |
+| `0` | sessiz | tam güçlü |
+| `100` | tam güçlü | duyulmayacak kadar kısık |
+| `50` | dinlenme değeri — ilk capture'da da (`0x06` içinde) aynı | |
+
+Dayanak: oyun tarafı Spotify ile (PipeWire sink'i), sohbet tarafı
+`speaker-test -D plughw:2,1 -c 2 -t sine` ile doğrudan ALSA'dan çalınarak.
+`SET 0x64` ayrıca `NTFY` + doğrulama GET'iyle kabul edildi.
 
 ⚠️ **Önceki kayıt iki yönden birden yanlıştı** ("0..90, `0` = tam oyun"):
 
@@ -170,12 +177,17 @@ sohbet); bu değer kulaklığın içindeki karışım oranı.
 var (`alsa_output.usb-Sony_INZONE_Buds-00.iec958-stereo`). Yani "acaba sohbet
 cihazında mıydı" ihtimali yok; kısılan akış oyun akışı.
 
-**Açık uç — ikinci PCM.** `aplay -l` kartta **iki** playback cihazı gösteriyor
-(`card 2: Buds, device 0` ve `device 1`), ama WirePlumber'ın ACP profili tek
-sink açıyor. PipeWire `device 0`'ı kullanıyor (`Subdevices: 0/1` = dolu),
-`device 1` boşta. Sohbet akışı büyük ihtimalle o; hangisinin hangisi olduğu ve
-profil değiştirilerek ikisinin birden açılıp açılamayacağı **ölçülmedi**.
-Açılabilirse bu slider Linux'ta da gerçek bir denge kontrolü olur.
+**İkinci PCM = sohbet akışı (ölçüldü).** `aplay -l` kartta iki playback cihazı
+gösteriyor: `card 2: Buds, device 0` — PipeWire burayı kullanıyor
+(`Subdevices: 0/1` = dolu) — ve `device 1`, boşta. `device 1`'e doğrudan
+`speaker-test` ile çalındığında ses oyun akışının **tam tersi** yönde
+davrandı, yukarıdaki tablo bu ölçümden.
+
+⚠️ **Ama PipeWire `device 1`'i sink olarak açmıyor.** WirePlumber'ın ACP
+profili tek sink veriyor; sohbet akışına şu an yalnızca ALSA'dan doğrudan
+(`plughw:2,1`) ulaşılabiliyor. Uygulamalar oraya yönlendirilemediği sürece
+balance slider'ı pratikte "her şeyi kıs" düğmesi gibi davranır. İkisini birden
+açan bir profil ya da WirePlumber kuralı **yazılmadı** — asıl kazanç orada.
 
 **Açık uç — kuantalama.** Ayarın 10'ar adım mı yoksa serbest mi olduğu
 ölçülmedi; `0x64` (100) ve `0x28` (40) kabul edildi, ara bir değer (`0x37`)
