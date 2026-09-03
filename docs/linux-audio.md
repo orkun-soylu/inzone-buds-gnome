@@ -92,6 +92,36 @@ GNOME'un Ses paneli uygulama başına **ses seviyesi** verir ama uygulama başı
 Varsayılan çıkış oyun akışında (`pro-output-0`) kalmalı; yalnızca sesli
 görüşme uygulaması sohbet akışına alınır.
 
+### ⚠️ Listede **dört** INZONE görünür, ikisi tuzak
+
+Pro Audio kurulduktan sonra GNOME'un Ses Çıkışı listesi şunu gösterir:
+
+```
+Analog Output – INZONE Buds            ← kartın route'u, cihaz DEĞİL
+Digital Output (S/PDIF) – INZONE Buds  ← kartın route'u, cihaz DEĞİL
+INZONE Buds Pro                        ← pro-output-0, oyun akışı
+INZONE Buds Pro 1                      ← pro-output-1, sohbet akışı
+```
+
+Ama gerçekte **iki** sink vardır. Ölçüm:
+
+- `wpctl status` → INZONE altında iki sink (`Pro`, `Pro 1`) + bir source
+- `pw-cli e <devid> EnumRoute` → üç route: `Headset Microphone`,
+  `Analog Output`, `Digital Output (S/PDIF)`
+
+Yani iki çıkış route'u + iki node = listedeki dört satır. Adlandırma da bunu
+ele veriyor: GNOME port taşıyan girdileri `port – cihaz` biçiminde yazar
+("Speaker – Alder Lake…" gibi); alttaki iki satırda tire yoktur, çünkü onlar
+doğrudan node'dur.
+
+**Üstteki iki satıra dokunma.** Onlar ACP profillerine ait çıkışlar; seçilmesi
+kartı `pro-audio` dışına çıkarır ve sohbet sink'i kaybolur. *(Route seçmenin
+profili geri döndürdüğü doğrudan denenmedi — çıkarım. Olursa `make wireplumber`
+düzeni geri kurar.)*
+
+Günlük kullanım: varsayılan çıkış **INZONE Buds Pro**'da kalsın, yalnızca sesli
+görüşme uygulaması kendi ayarından **INZONE Buds Pro 1**'e alınsın.
+
 ### Doğrulanan davranış (2026-09-03)
 
 Google Meet sohbet akışında, Spotify oyun akışında çalarken kaydırıcı iki uca
@@ -105,5 +135,8 @@ yapıyor ve Quick Settings kaydırıcısı amacına ulaşıyor.
 yönlendirmesini devre dışı bırakır; ses seviyesi yazılımsal olur. Günlük
 kullanımda sorun çıkarmadı, ama donanım mikserinden gelen bir davranış
 beklenmemeli.
+
+Kurulum **reboot'tan sağ çıktı** (2026-09-03) — dongle çıkar-tak testinden
+daha güçlü bir doğrulama.
 
 Geri almak için: `make wireplumber-uninstall`
