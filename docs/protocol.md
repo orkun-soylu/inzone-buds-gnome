@@ -83,7 +83,7 @@ push'ları TID=1 taşıyor, yeniden kullanılırsa push cevap sanılır.
 | `0x21` | HEADPHONE_VOLUME | `00 1c ff` | **byte[1] = ses**; tuşla `1c→1d→1e` ilerledi |
 | `0x22` | GAME_CHAT_MIX_BALANCE | `32` (=50) | **0..100**, `0` = oyun kısık — aşağıya bak |
 | `0x23` | SIDETONE_VOLUME | `00 ff` | |
-| `0x24` | MIC_VOLUME | `00 ff ff` | |
+| `0x24` | **MIC_MUTE** | `00 ff ff` | seviye **değil**, mute anahtarı — aşağıya bak |
 | `0x41` | **NOISE_CONTROL** | `01 14 ff 00` | `[mod, ambient_seviye, ff, 00]` — aşağıya bak |
 | `0x42` | — | `01 01 01` | |
 | `0x43` | — | `03` | |
@@ -95,7 +95,7 @@ Fiziksel düğme yok. Dongle üzerinden geçerli olan varsayılan atamalar:
 | Hareket | Sol | Sağ |
 |---|---|---|
 | Tek dokunuş | gürültü engelleme ↔ ambient geçişi → `0x41` | ses yükselt → `0x21` |
-| Dokun ve tut | mikrofon kontrolü | ses azalt |
+| Dokun ve tut | mikrofon aç/kapa → `0x24` (ölçüldü) | ses azalt |
 | Çift / üç dokunuş | dongle'da işlevsiz | dongle'da işlevsiz |
 
 Atamalar INZONE Hub / Sony Sound Connect ile değiştirilebiliyor, yani bir
@@ -206,6 +206,30 @@ belirleyici olan aynı desen.)
 Sonuç: `extension.js`'teki 10'a yuvarlama **zorunluluk**. Olmasaydı slider
 konumlarının çoğu sessizce hiçbir şey yapmayacaktı — kullanıcının "bazen
 çalışıyor bazen çalışmıyor" diye tarif edeceği türden bir bug.
+
+### `0x24` — MIC_VOLUME değil, **mute anahtarı** (2026-09-03)
+
+Payload üç byte, ama yalnızca `byte[0]` hareket ediyor:
+
+| `byte[0]` | anlam | dayanak |
+|---|---|---|
+| `0` | mikrofon açık | giriş seviyesi çubuğu konuşurken hareket ediyor |
+| `1` | mikrofon kapalı | çubuk ölü |
+
+`byte[1]` ve `byte[2]` gözlemin tamamı boyunca `0xFF` kaldı — orada seviye
+alanı yok. Değişim `NTFY_ACTIVE` / `tid=1` push'u olarak geliyor, yani
+kullanıcı kulaklıktan kapatınca panel poll beklemeden öğrenebiliyor.
+
+**Ölçüm yöntemi:** `monitor.py -e 0x24` açıkken sol kulaklıkta dokun-ve-tut,
+dört kez tekrarlandı; her seferinde `byte[0]` `00 ↔ 01` gidip geldi. Polarite
+ayrıca ses giriş seviyesine bakılarak sabitlendi.
+
+⚠️ **`MIC_VOLUME` adı H5'ten miras yanlış bir etiketti.** `0x21`'de
+(`00 1c ff`) `byte[1]` gerçek bir seviyedir ve tuşla `1c→1d→1e` ilerlediği
+görülmüştü; `0x24`'te aynı konumda sabit `0xFF` var. Ad benzerliğine bakıp
+"o da seviyedir" varsaymak, `0x41` ve `0x22`'dekiyle aynı hata olurdu — bu
+sefer koda girmeden yakalandı. `0x23` SIDETONE de aynı `0xFF` desenini
+gösteriyor; **o hâlâ ölçülmedi.**
 
 ## Saha bulguları (2026-09-02, laptop) — PROTOKOL DOĞRULANDI
 

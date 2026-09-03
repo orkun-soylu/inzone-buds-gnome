@@ -41,7 +41,7 @@ export const EV = {
     VOLUME: 0x21,
     BALANCE: 0x22,
     SIDETONE: 0x23,
-    MIC_VOLUME: 0x24,
+    MIC_MUTE: 0x24,
     NOISE: 0x41,
 };
 
@@ -53,6 +53,13 @@ export const NOISE_ANC = 1;
 export const NOISE_AMBIENT = 2;
 
 export const AMBIENT_MAX = 20;   // Sony araligi 0-20
+
+// 0x24 SEVIYE DEGIL, mute anahtari (olculdu 2026-09-03). Sol kulaklikta
+// dokun-ve-tut ile byte[0] 00<->01 arasinda gidip geldi, byte[1..2] boyunca
+// 0xFF sabit kaldi -- yani orada seviye yok. Polarite ses giris seviyesine
+// bakilarak dogrulandi. "MIC_VOLUME" adi H5'ten miras yanlis etiketti.
+export const MIC_ON = 0;
+export const MIC_MUTED = 1;
 // 0x22 tavani ve yonu OLCULDU (2026-09-03, laptop). Onceki 90 H5'ten tasinmis
 // dayanaksiz bir varsayimdi: cihaz SET 0x64'u kabul etti ve geri okudu, kirpmadi.
 // Yon de tersti — 0 oyun akisini SUSTURUYOR, 100 tam guclu veriyor.
@@ -137,6 +144,18 @@ export function decodeBulk(p) {
         volume: p[8],
         balance: p[10],
     };
+}
+
+/** 0x24 -> true = mikrofon kapali. */
+export function decodeMicMuted(p) {
+    if (!p.length)
+        return null;
+    return p[0] === MIC_MUTED;
+}
+
+/** 0x24 SET payload'i. byte[1..2] = 0xFF, cihazin kendi cercevesindeki gibi. */
+export function encodeMicMuted(muted) {
+    return [muted ? MIC_MUTED : MIC_ON, 0xff, 0xff];
 }
 
 /** 0x41 -> {mode, ambient}. */

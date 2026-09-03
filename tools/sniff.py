@@ -56,7 +56,7 @@ EVENT_ID = {
     0x21: "HEADPHONE_VOLUME",
     0x22: "GAME_CHAT_MIX_BALANCE",
     0x23: "SIDETONE_VOLUME",
-    0x24: "MIC_VOLUME",
+    0x24: "MIC_MUTE",
     0x41: "NOISE_CONTROL",      # ANC/kapali/ambient + ambient seviyesi (0-20)
     0x42: "UNKNOWN_42",
     0x43: "UNKNOWN_43",
@@ -189,7 +189,11 @@ def describe_payload(event_id, p):
     if event_id == 0x21 and len(p) >= 2:
         # OLCULDU: ses tusuna basinca ikinci byte 1c -> 1d -> 1e ilerledi
         return "ses seviyesi = %d" % p[1]
-    if event_id in (0x23, 0x24) and p:
+    if event_id == 0x24 and p:
+        # OLCULDU: dokun-ve-tut ile byte[0] 00<->01; byte[1..2] hep 0xFF.
+        # Seviye degil, mute anahtari. 0 = acik, 1 = kapali.
+        return "mikrofon = %s" % ("KAPALI" if p[0] else "acik")
+    if event_id == 0x23 and p:
         return "seviye = %s" % " ".join("%d" % b for b in p)
     if event_id == 0x01 and p:
         return "2.4GHz baglanti durumu = %s" % p.hex()

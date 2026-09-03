@@ -75,6 +75,7 @@ class InzoneToggle extends QuickMenuToggle {
         this._lastUserAction = 0;
         this._mode = Proto.NOISE_OFF;
         this._ambient = Proto.AMBIENT_MAX;
+        this._micMuted = false;
 
         this.menu.setHeader('audio-headphones-symbolic', _('INZONE Buds'));
 
@@ -117,6 +118,18 @@ class InzoneToggle extends QuickMenuToggle {
         });
         this.menu.addMenuItem(this._balanceRow);
 
+        // --- mikrofon: 0x24 SEVIYE DEGIL, mute anahtari (olculdu). Bu yuzden
+        // slider degil switch. Anahtar ACIK = mikrofon calisiyor.
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._micItem = new PopupMenu.PopupSwitchMenuItem(_('Mikrofon'), true);
+        this._micItem.connect('toggled', (_item, state) => {
+            this._lastUserAction = GLib.get_monotonic_time();
+            this._micMuted = !state;
+            this._device.set(Proto.EV.MIC_MUTE, Proto.encodeMicMuted(this._micMuted))
+                .catch(() => {});
+        });
+        this.menu.addMenuItem(this._micItem);
+
         this.connect('clicked', () => {
             // Toggle = ANC acik/kapali. Ortam sesi menuden secilir.
             this._applyMode(this.checked ? Proto.NOISE_ANC : Proto.NOISE_OFF);
@@ -152,6 +165,14 @@ class InzoneToggle extends QuickMenuToggle {
         this._mode = noise.mode;
         this._ambient = noise.ambient;
         this._renderNoise();
+    }
+
+    /** setToggleState 'toggled' yaymaz — geri besleme dongusu olusmaz. */
+    updateMic(muted) {
+        if (muted === null || this._userIsHolding)
+            return;
+        this._micMuted = muted;
+        this._micItem.setToggleState(!muted);
     }
 
     updateBulk(bulk) {
@@ -193,6 +214,8 @@ export default class InzoneExtension extends Extension {
         this._pushId = this._device.connect('pushed', (_dev, eventId, info) => {
             if (eventId === Proto.EV.NOISE)
                 this._indicator.toggle.updateNoise(Proto.decodeNoise(info.payload));
+            else if (eventId === Proto.EV.MIC_MUTE)
+                this._indicator.toggle.updateMic(Proto.decodeMicMuted(info.payload));
             else if (eventId === Proto.EV.BATTERY || eventId === Proto.EV.BALANCE)
                 this._refresh();
         });
@@ -249,8 +272,12 @@ export default class InzoneExtension extends Extension {
             // Tek istekte batarya + ses + balance. Ayri ayri sormaktan ucuz.
             const bulk = await this._device.get(Proto.EV.STATUS_BULK);
             const noise = await this._device.get(Proto.EV.NOISE);
+            // 0x24 bulk'ta yok, ayrica sorulmali. Cihaz kendiliginden de
+            // bildiriyor (NTFY_ACTIVE) — bu poll yalnizca emniyet agi.
+            const mic = await this._device.get(Proto.EV.MIC_MUTE);
             toggle.updateBulk(Proto.decodeBulk(bulk.payload));
             toggle.updateNoise(Proto.decodeNoise(noise.payload));
+            toggle.updateMic(Proto.decodeMicMuted(mic.payload));
             toggle.visible = true;
         } catch (e) {
             // Kulaklik kutuda / kapali olabilir; dongle takili ama cevap yok.

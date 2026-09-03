@@ -89,6 +89,22 @@ ok('en dusuk kulaklik', P.lowestBud({left: 93, right: 99, case: 100}) === 93);
 ok('kutu hesaba katilmiyor', P.lowestBud({left: null, right: 80, case: 100}) === 80);
 ok('ikisi de yoksa null', P.lowestBud({left: null, right: null, case: 100}) === null);
 
+console.log('\n7) 0x24 mikrofon mute — sahada yakalanan iki durum');
+// 2026-09-03 laptop: dokun-ve-tut ile byte[0] 00<->01, byte[1..2] hep 0xFF.
+// Polarite ses giris seviyesiyle dogrulandi: 0 = acik, 1 = kapali.
+for (const [payload, muted, label] of [
+    ['00 ff ff', false, 'acik'],
+    ['01 ff ff', true, 'kapali'],
+]) {
+    const frame = buildEvent(P.EV.MIC_MUTE, P.NTFY_ACTIVE, [...bytes(payload)], 1);
+    ok(`${label}: muted=${muted}`,
+       P.decodeMicMuted(P.parseEvent(frame).payload) === muted);
+}
+ok('encodeMicMuted(true)  -> 01 ff ff',
+   hex(Uint8Array.from(P.encodeMicMuted(true))) === '01 ff ff');
+ok('encodeMicMuted(false) -> 00 ff ff',
+   hex(Uint8Array.from(P.encodeMicMuted(false))) === '00 ff ff');
+
 console.log('\n' + '='.repeat(60));
 if (fails) {
     console.log(`BASARISIZ: ${fails} test`);
