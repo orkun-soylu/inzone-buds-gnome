@@ -81,7 +81,7 @@ push'ları TID=1 taşıyor, yeniden kullanılırsa push cevap sanılır.
 | `0x08` | — | `03 ff ff ff ff 0f ff 00 01 00` | |
 | `0x09` | — | `00` (RX ve TX) | |
 | `0x21` | HEADPHONE_VOLUME | `00 1c ff` | **byte[1] = ses**; tuşla `1c→1d→1e` ilerledi |
-| `0x22` | GAME_CHAT_MIX_BALANCE | `32` (=50) | 0..90, 10'ar adım |
+| `0x22` | GAME_CHAT_MIX_BALANCE | `32` (=50) | **0..100**, `0` = oyun kısık — aşağıya bak |
 | `0x23` | SIDETONE_VOLUME | `00 ff` | |
 | `0x24` | MIC_VOLUME | `00 ff ff` | |
 | `0x41` | **NOISE_CONTROL** | `01 14 ff 00` | `[mod, ambient_seviye, ff, 00]` — aşağıya bak |
@@ -145,6 +145,41 @@ veriyor. Quick Settings panelinin poll'u beş ayrı GET yerine bunu kullanmalı.
 girip yanlış `event_id`'ye atfedilmeleri kolay — gelen çerçeve daima **kendi**
 `event_id`'sine göre kaydedilmeli, sorulan ID'ye göre değil. (`query.py`'de bu
 hata bir kez yapıldı ve düzeltildi.)
+
+### `0x22` GAME_CHAT_MIX_BALANCE — yön ve tavan ölçüldü (2026-09-03)
+
+Payload tek byte. Dongle bilgisayara iki ayrı USB ses akışı sunuyor (oyun +
+sohbet); bu değer kulaklığın içindeki karışım oranı.
+
+| değer | anlam | dayanak |
+|---|---|---|
+| `0` | oyun akışı tamamen kısık | dinleme testi: slider sol uçta Spotify tümüyle sustu |
+| `100` | oyun akışı tam güçte | dinleme testi + `SET 0x64` kabul edildi, geri okundu |
+| `50` | dinlenme değeri | ilk capture (`0x06` içinde de aynı) |
+
+⚠️ **Önceki kayıt iki yönden birden yanlıştı** ("0..90, `0` = tam oyun"):
+
+- **Tavan 90 değil 100.** `SET 0x22 = 0x64` → `NTFY` payload `64`, doğrulama
+  GET'i de `64` döndü; cihaz kırpmadı. `90` H5 protokolünden taşınmış, bu
+  cihazda hiç ölçülmemiş bir varsayımdı. Dinlenme değerinin `50` olması da
+  0–100 ile tutarlı — 0–90'ın ortası `45` olurdu.
+- **Yön ters.** `0` oyun tarafı değil, oyun tarafını **susturan** uç.
+
+**Kanıt neden kesin:** ölçüm sırasında Spotify'ın akışı PipeWire'da
+`INZONE Buds:playback_FL/FR`'a bağlıydı ve dongle'ın Linux'ta **tek** sink'i
+var (`alsa_output.usb-Sony_INZONE_Buds-00.iec958-stereo`). Yani "acaba sohbet
+cihazında mıydı" ihtimali yok; kısılan akış oyun akışı.
+
+**Açık uç — ikinci PCM.** `aplay -l` kartta **iki** playback cihazı gösteriyor
+(`card 2: Buds, device 0` ve `device 1`), ama WirePlumber'ın ACP profili tek
+sink açıyor. PipeWire `device 0`'ı kullanıyor (`Subdevices: 0/1` = dolu),
+`device 1` boşta. Sohbet akışı büyük ihtimalle o; hangisinin hangisi olduğu ve
+profil değiştirilerek ikisinin birden açılıp açılamayacağı **ölçülmedi**.
+Açılabilirse bu slider Linux'ta da gerçek bir denge kontrolü olur.
+
+**Açık uç — kuantalama.** Ayarın 10'ar adım mı yoksa serbest mi olduğu
+ölçülmedi; `0x64` (100) ve `0x28` (40) kabul edildi, ara bir değer (`0x37`)
+denenmedi. Extension ihtiyattan 10'a yuvarlıyor (`extension.js`).
 
 ## Saha bulguları (2026-09-02, laptop) — PROTOKOL DOĞRULANDI
 

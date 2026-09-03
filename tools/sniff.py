@@ -185,7 +185,7 @@ def describe_payload(event_id, p):
         return "toplu durum: %s | ses=%d | balance=%d | kuyruk=%s" % (
             bat.replace("batarya: ", "batarya "), p[8], p[10], p[11:].hex(" "))
     if event_id == 0x22 and p:
-        return "game/chat balance = %d (0=full game, 90=full chat)" % p[0]
+        return "game/chat balance = %d (0=full chat, 100=full game)" % p[0]
     if event_id == 0x21 and len(p) >= 2:
         # OLCULDU: ses tusuna basinca ikinci byte 1c -> 1d -> 1e ilerledi
         return "ses seviyesi = %d" % p[1]

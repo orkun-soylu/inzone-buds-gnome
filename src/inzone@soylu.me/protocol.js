@@ -53,7 +53,10 @@ export const NOISE_ANC = 1;
 export const NOISE_AMBIENT = 2;
 
 export const AMBIENT_MAX = 20;   // Sony araligi 0-20
-export const BALANCE_MAX = 90;   // 10'ar adim, 0 = tam oyun
+// 0x22 tavani ve yonu OLCULDU (2026-09-03, laptop). Onceki 90 H5'ten tasinmis
+// dayanaksiz bir varsayimdi: cihaz SET 0x64'u kabul etti ve geri okudu, kirpmadi.
+// Yon de tersti — 0 oyun akisini SUSTURUYOR, 100 tam guclu veriyor.
+export const BALANCE_MAX = 100;  // 0 = tam sohbet (oyun kisik), 100 = tam oyun
 export const VOLUME_MAX = 50;
 
 /** COMMAND cercevesi kur. payload: sayi dizisi. */
