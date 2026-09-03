@@ -82,7 +82,7 @@ push'ları TID=1 taşıyor, yeniden kullanılırsa push cevap sanılır.
 | `0x09` | — | `00` (RX ve TX) | |
 | `0x21` | HEADPHONE_VOLUME | `00 1c ff` | **byte[1] = ses**; tuşla `1c→1d→1e` ilerledi |
 | `0x22` | GAME_CHAT_MIX_BALANCE | `32` (=50) | **0..100**, `0` = oyun kısık — aşağıya bak |
-| `0x23` | SIDETONE_VOLUME | `00 ff` | |
+| `0x23` | SIDETONE? | `00 ff` | `byte[0]` yazılabilir, `byte[1]` değil — aşağıya bak |
 | `0x24` | **MIC_MUTE** | `00 ff ff` | seviye **değil**, mute anahtarı — aşağıya bak |
 | `0x41` | **NOISE_CONTROL** | `01 14 ff 00` | `[mod, ambient_seviye, ff, 00]` — aşağıya bak |
 | `0x42` | — | `01 01 01` | |
@@ -206,6 +206,31 @@ belirleyici olan aynı desen.)
 Sonuç: `extension.js`'teki 10'a yuvarlama **zorunluluk**. Olmasaydı slider
 konumlarının çoğu sessizce hiçbir şey yapmayacaktı — kullanıcının "bazen
 çalışıyor bazen çalışmıyor" diye tarif edeceği türden bir bug.
+
+### `0x23` — kısmen ölçüldü, anlamı **hâlâ bilinmiyor** (2026-09-03)
+
+| byte | durum | dayanak |
+|---|---|---|
+| `byte[0]` | yazılabilir, kalıcı (`00` ↔ `01`) | `SET 01 ff` → doğrulama GET `01 ff`; geri `00` da tuttu |
+| `byte[1]` | **yazılamıyor**, `0xFF`'e geri dönüyor | `SET 01 0a` → `NTFY 01 0a` ama doğrulama GET **`01 ff`** |
+
+Yani `0x24` gibi: seviye alanı yok, `byte[0]` bir anahtar. **Ama hangi anahtar
+olduğu belirlenemedi** — `01`'e alındığında konuşurken kulaklıkta duyulur bir
+fark olmadı. Dongle bu event'e hiç cevap vermiyor (`-a tx` boş), ayar
+kulaklıkta yaşıyor.
+
+Muhtemel açıklama: sidetone yalnızca sohbet akışı/mikrofon yakalaması
+etkinken devreye giriyor olabilir; ölçüm sırasında mikrofonu açan bir
+uygulama yoktu. **Doğrulanmadı.**
+
+⚠️ **`NTFY` yankısı kabul kanıtı DEĞİLDİR.** Bu event bunu açıkça gösterdi:
+`SET 01 0a` için `NTFY` komutun payload'ını (`01 0a`) yankıladı, ama cihaz onu
+saklamadı — hemen ardından gelen GET `01 ff` dedi. Tek yetkili **doğrulama
+GET'i**. (`0x22`'de reddedilen `55` farklı davranmıştı: orada `NTFY` komutu
+değil eski değeri döndürmüştü. Yani reddin tek bir imzası yok.)
+
+Bu kural ışığında `0x41`, `0x22` ve `0x24` sonuçları yeniden gözden geçirildi:
+hepsinde doğrulama GET'i de aynı değeri döndürmüştü, sarsılan bir kayıt yok.
 
 ### `0x24` — MIC_VOLUME değil, **mute anahtarı** (2026-09-03)
 
