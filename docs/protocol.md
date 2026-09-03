@@ -219,9 +219,20 @@ olduğu belirlenemedi** — `01`'e alındığında konuşurken kulaklıkta duyul
 fark olmadı. Dongle bu event'e hiç cevap vermiyor (`-a tx` boş), ayar
 kulaklıkta yaşıyor.
 
-Muhtemel açıklama: sidetone yalnızca sohbet akışı/mikrofon yakalaması
-etkinken devreye giriyor olabilir; ölçüm sırasında mikrofonu açan bir
-uygulama yoktu. **Doğrulanmadı.**
+**"Mikrofon açık olmadığı için duyulmuyordur" hipotezi ELENDİ (2026-09-03).**
+Canlı bir Google Meet görüşmesi sırasında tekrarlandı — mikrofon ve kulaklık
+INZONE'a ayarlı, GNOME panelinde kırmızı mikrofon göstergesi görünür durumda:
+
+- Görüşmenin başlaması `0x23`'ü değiştirmedi (`00 ff`, aynı) — cihaz çağrı
+  durumunu bu event'te tutmuyor
+- `byte[1]` çağrı sırasında da yazılamadı (`SET 01 14` → GET `01 ff`), yani
+  koşullu bir alan değil
+- `byte[0]` `00` ↔ `01` arasında birkaç tur gidilip gelindi, konuşurken
+  **duyulur fark yok**
+
+Sonuç: yazılabilir ve kalıcı bir anahtar, ama işlevi bilinmiyor. `SIDETONE`
+adı da `MIC_VOLUME` gibi H5'ten miras — doğrulanmadığı için tabloda `?` ile
+duruyor. Koda hiçbir şey eklenmedi.
 
 ⚠️ **`NTFY` yankısı kabul kanıtı DEĞİLDİR.** Bu event bunu açıkça gösterdi:
 `SET 01 0a` için `NTFY` komutun payload'ını (`01 0a`) yankıladı, ama cihaz onu
