@@ -164,11 +164,22 @@ eşleşmesi ve checksum.
 **Checksum, yazma yönü: `sum(buf[6..12+len(payload)]) & 0xFF`** (yani
 `--cksum-lo 6`, H5'in `buildCommand`'ıyla aynı). İlk denemede tuttu.
 
-⚠️ **Dongle kendiliğinden yayın yapmıyor.** Müzik çalarken 3 dakika pasif
-dinlemede *sıfır* rapor geldi. HeadsetControl'ün buds sürücüsündeki "the dongle
-sends unsolicited HID reports" ifadesi genel durum için yanlış — o sürücü
-çalışıyorsa bile ancak cihaz kendiliğinden bir şey yolladığında çalışır.
-Doğru yol GET sormak.
+⚠️ **Dongle kendiliğinden yayın yapıyor — ama yalnızca durum DEĞİŞTİĞİNDE.**
+
+İlk okuma (2026-09-02) "hiç yayın yapmıyor" idi: müzik çalarken 3 dakika pasif
+dinlemede *sıfır* rapor geldi. **Düzeltme (2026-09-03):** o pencerede değişen bir
+şey olmadığı içinmiş. Tarama sırasında sorulmadan şu geldi:
+
+```
+BATTERY_INFO(0x04)  NTFY_ACTIVE(0xA0)  tid=1  payload=00 55 00 54 ff 64
+```
+
+Batarya `86/85` → `85/84` düşmüştü. `NTFY_ACTIVE` + `tid=1`, yani push imzası.
+
+Pratik sonuç: push yolu **gerçek**, extension'daki `pushed` sinyali ölü kod
+değil. Ama olay seyrek ve öngörülemez — pasif dinlemeye dayanan bir tasarım
+çalışmaz, poll şart. HeadsetControl'ün "the dongle sends unsolicited HID
+reports" ifadesi doğru ama eksik: yolluyor, sadece nadiren.
 
 ### Batarya payload'ı (6 byte, ölçüldü)
 
@@ -213,7 +224,7 @@ Vendor collection'ı usage'a göre değil, **usage_page'e göre** seç.
 | `0x85` | `00` | |
 | `0x86` | `05 01 02 04 00 01 02 04` | iki grup, mod listesi olabilir |
 | `0x87` | `00 00 01 00` | |
-| `0x89` | `00 00 00 00 00 00` | **EQ adayı** — 6 byte / 6 bant |
+| `0x89` | `00 00 00 00 00 00` | **salt okunur** — SET'e cevap vermiyor, EQ değil |
 | `0x8C` | 2×112 byte, **çok parçalı** | yetenek tablosu — **çözüldü**, aşağıya bak |
 | `0x8D` | 2×12 byte | `0x8C`'nin aynı grameri, iki kayıtlık kısaltması |
 | `0x8E` | `00` | |
@@ -266,11 +277,35 @@ içinde çalıştığı ölçülmüş `0x04` (batarya), `0x06` (toplu durum) ve 
 (gürültü kontrolü) **yok**. Tablo yalnızca ses ayarları öbeğini kapsıyor —
 **EQ/spatial buradan çıkmıyor**, oraya başka yoldan bakılmalı.
 
-**`0x89` en umut verici açık uç.** Altı sıfır byte; BudsLink Sony modellerinde
-`equalizerSixBands` bayrağı taşıyor ve INZONE Hub'da EQ var. Doğrulanmadı —
-denemek için `0x89`'a SET atıp sesi dinlemek, sonra `00 00 00 00 00 00` ile geri
-almak gerekir. Değer aralığı bilinmiyor (Sony genelde 0–20, 10 = düz kullanır;
-altı sıfırın "düz" mü "ayarsız" mı olduğu belirsiz).
+### `0x89` — denendi, **EQ değil** (2026-09-03, laptop)
+
+Hipotez şuydu: altı sıfır byte, BudsLink'te `equalizerSixBands` bayrağı var,
+INZONE Hub'da EQ var → `0x89` altı bantlı EQ olabilir. **Yanlış çıktı.**
+
+| deneme | sonuç |
+|---|---|
+| `GET 0x89 -a rx` | `RET`, `00 00 00 00 00 00` |
+| `SET 0x89 -a rx` payload `00×6` | **cevap yok** (iki kez) |
+| `GET 0x89 -a tx` | cevap yok (dört checksum varyantı da) |
+| `SET 0x89 -a tx` payload `00×6` | cevap yok |
+| **kontrol:** `SET 0x41 -a rx` payload `02 12 ff 00` | `NTFY(0x20)` + doğrulama GET ✓ |
+
+Son satır belirleyici: **aynı oturumda, aynı node ve adreste, aynı checksum
+kuralıyla** bilinen bir event SET'i kabul etti. Yani `0x89`'ın sessizliği
+bağlantıdan değil kendisinden geliyor — okunabilir ama yazılamaz.
+
+Gönderilen çerçeve de doğrulandı, kurgu hatası değil:
+`02 12 01 00 fc 0e 96 c3 41 89 02 02 00 · 00×6 · 27` — `hid_length`=12+6,
+`param_length`=8+6, checksum `buf[6..18]` toplamı = 0x27. ✓
+
+⚠️ **Denenmeyen tek varyant: farklı payload uzunluğu.** Yalnız 6 bayt denendi
+(okunan uzunluk). `0x89` başka bir uzunluk bekliyor olabilir. Ama `0x8C` yetenek
+tablosu EQ'yu zaten içermiyor, dolayısıyla bu protokolde EQ'nun varlığına dair
+elimizde hiçbir olumlu kanıt kalmadı.
+
+**Sonuç: `0x8x` bloğunda EQ adayı kalmadı.** EQ/spatial bu vendor HCI kanalında
+görünmüyor; Sony bunları başka bir mekanizmayla (ayrı bir arayüz ya da yalnız
+INZONE Hub'ın kullandığı bir uç) yürütüyor olmalı.
 
 ## Buds'ın aynı protokolü konuştuğu tezi
 
