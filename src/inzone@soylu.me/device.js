@@ -2,16 +2,9 @@
 //
 // hidraw discovery + asynchronous I/O.
 //
-// GNOME Shell is single-threaded: there are NO blocking reads here. A
-// continuous asynchronous read loop runs; each incoming frame either matches
-// the TID of a pending request or is an unsolicited push sent when the user
-// touches an earbud (NTFY_ACTIVE, tid=1), and becomes the 'pushed' signal.
-//
-// Reads go through a GioUnix stream on the node's file descriptor. That stream
-// is pollable, so a pending read waits on the main loop rather than parking a
-// worker thread in read(), and cancelling it on disable() takes effect at once.
-// The dongle only speaks when something changes, so a thread-based read could
-// stay blocked long after the extension was disabled (on every screen lock).
+// A read loop matches incoming frames to pending requests by TID; anything
+// else is a push from the device (an earbud was touched) and is emitted as
+// 'pushed'. Reads use a pollable GioUnix stream, so disable() can cancel them.
 
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
@@ -24,7 +17,7 @@ const VID = 0x054c;
 const PID = 0x0ec2;
 const REQUEST_TIMEOUT_MS = 1500;
 
-/** Read a small file without blocking the shell. Resolves with its bytes. */
+/** Read a small file asynchronously. */
 function readFile(path) {
     return new Promise((resolve, reject) => {
         Gio.File.new_for_path(path).load_contents_async(null, (file, res) => {
@@ -72,8 +65,7 @@ export async function findNode() {
             continue;
         }
 
-        // Match the vendor collection by usage_page, NOT by usage:
-        // the H5 reports usage 0x0002 for 0xFF04, the buds report 0x0001.
+        // Match by usage page: the usage differs between INZONE models.
         for (let i = 0; i + 2 < desc.length; i++) {
             if (desc[i] === 0x06 && desc[i + 1] === 0x04 && desc[i + 2] === 0xff)
                 return `/dev/${name}`;
@@ -85,7 +77,7 @@ export async function findNode() {
 export const InzoneDevice = GObject.registerClass({
     GTypeName: 'InzoneDevice',
     Signals: {
-        // a change the device reported on its own (an earbud was touched)
+        // a change the device reported on its own
         'pushed': {param_types: [GObject.TYPE_UINT, GObject.TYPE_JSOBJECT]},
     },
 }, class InzoneDevice extends GObject.Object {
@@ -98,7 +90,7 @@ export const InzoneDevice = GObject.registerClass({
         this._pending = new Map();   // tid -> {resolve, reject, timeoutId}
         this._tid = 1;
         this._node = null;
-        this._generation = 0;   // bumped by close(), so an open() in flight can tell
+        this._generation = 0;   // bumped by close()
     }
 
     get isOpen() {
@@ -109,14 +101,14 @@ export const InzoneDevice = GObject.registerClass({
         return this._node;
     }
 
-    /** Open the device. Resolves false on failure (does not throw — this is the polling path). */
+    /** Open the device. Resolves false on failure. */
     async open() {
         if (this.isOpen)
             return true;
 
         const generation = this._generation;
         const node = await findNode();
-        // close() ran while the search was in flight (the extension was disabled)
+        // close() ran meanwhile
         if (generation !== this._generation)
             return false;
         if (node === null || this.isOpen)
@@ -154,15 +146,14 @@ export const InzoneDevice = GObject.registerClass({
         try {
             this._stream?.close(null);
         } catch (e) {
-            // a failed close does not matter
+            // ignore
         }
         this._stream = this._input = this._output = null;
         this._node = null;
     }
 
     _nextTid() {
-        // 0 and 1 are never used: the dongle's own pushes carry tid=1, and
-        // reusing it would make a push look like our reply.
+        // Skip 0 and 1: the dongle's own pushes carry tid=1.
         this._tid += 1;
         if (this._tid > 0xfff0 || this._tid < 2)
             this._tid = 2;
@@ -185,7 +176,7 @@ export const InzoneDevice = GObject.registerClass({
                     return;
                 }
 
-                if (data.length === 0) {    // EOF: the node went away
+                if (data.length === 0) {    // EOF
                     this._onDisconnect();
                     return;
                 }
@@ -207,7 +198,6 @@ export const InzoneDevice = GObject.registerClass({
             waiter.resolve(info);
             return;
         }
-        // Nobody is waiting -> the device's own notification.
         this.emit('pushed', info.eventId, info);
     }
 
@@ -215,7 +205,7 @@ export const InzoneDevice = GObject.registerClass({
         this.close();
     }
 
-    /** Send a GET/SET and wait for the reply. Promise<info>; rejects on timeout. */
+    /** Send a GET/SET; resolves with the reply, rejects on timeout. */
     request(eventId, eventType, payload = [], address = Proto.ADDR_PC_TO_RX) {
         return new Promise((resolve, reject) => {
             if (!this.isOpen) {

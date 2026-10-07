@@ -18,9 +18,9 @@ import {InzoneDevice} from './device.js';
 const POLL_OPEN_MS = 2000;    // while Quick Settings is open
 const POLL_CLOSED_MS = 10000; // while it is closed
 const DRAG_DEBOUNCE_MS = 220; // slider drags
-const USER_HOLD_MS = 2000;    // keeps a poll from overwriting the UI right after a drag
+const USER_HOLD_MS = 2000;    // a poll does not override a recent user change
 
-/** A menu row holding a slider — takes no space in the Quick Settings grid. */
+/** Menu row with an icon and a debounced slider. */
 const SliderRow = GObject.registerClass(
 class SliderRow extends PopupMenu.PopupBaseMenuItem {
     _init(iconName, onChange) {
@@ -49,7 +49,7 @@ class SliderRow extends PopupMenu.PopupBaseMenuItem {
         });
     }
 
-    /** Show a value read from the device — without firing our own 'notify' handler. */
+    /** Set the value without triggering onChange. */
     setValueQuiet(value) {
         this._suppress = true;
         this.slider.value = value;
@@ -66,11 +66,8 @@ class SliderRow extends PopupMenu.PopupBaseMenuItem {
 });
 
 /**
- * Noise-mode row. Does NOT use the shell's Ornament: Ornament.NONE hides the
- * check icon and it stops taking up space, so the selected row's label was
- * shifted right relative to the others. We add our own icon and change its
- * OPACITY rather than its visibility — the space stays reserved and all three
- * rows start at the same offset.
+ * Noise-mode row. Uses its own check icon toggled by opacity instead of the
+ * shell's Ornament, which collapses the icon and misaligns the labels.
  */
 const ModeRow = GObject.registerClass(
 class ModeRow extends PopupMenu.PopupBaseMenuItem {
@@ -111,7 +108,7 @@ class InzoneToggle extends QuickMenuToggle {
 
         this.menu.setHeader('audio-headphones-symbolic', _('INZONE Buds'));
 
-        // --- noise control, three states
+        // noise control
         this._modeItems = new Map();
         for (const [mode, label] of [
             [Proto.NOISE_ANC, _('Noise cancelling')],
@@ -124,9 +121,7 @@ class InzoneToggle extends QuickMenuToggle {
             this._modeItems.set(mode, item);
         }
 
-        // --- ambient sound level (0-20)
-        // It used to have no heading and a microphone icon, and was taken for
-        // the mic level. An icon alone does not tell the two sliders apart.
+        // ambient sound level (0-20)
         this.menu.addMenuItem(
             new PopupMenu.PopupSeparatorMenuItem(_('Ambient sound level')));
         this._ambientRow = new SliderRow('audio-volume-high-symbolic', value => {
@@ -138,20 +133,19 @@ class InzoneToggle extends QuickMenuToggle {
         });
         this.menu.addMenuItem(this._ambientRow);
 
-        // --- game / chat balance (0-100)
+        // game / chat balance (0-100)
         this.menu.addMenuItem(
             new PopupMenu.PopupSeparatorMenuItem(_('Game / chat balance')));
         this._balanceRow = new SliderRow('applications-games-symbolic', value => {
             this._lastUserAction = GLib.get_monotonic_time();
-            // The device ENFORCES steps of 10 — values in between are silently rejected.
+            // The device silently rejects values that are not multiples of 10.
             const step = Math.round(value * Proto.BALANCE_MAX / Proto.BALANCE_STEP)
                 * Proto.BALANCE_STEP;
             this._device.set(Proto.EV.BALANCE, [step]).catch(() => {});
         });
         this.menu.addMenuItem(this._balanceRow);
 
-        // --- microphone: 0x24 is NOT a level but a mute switch (measured),
-        // hence a switch rather than a slider. Switch ON = microphone live.
+        // microphone mute (0x24 is a switch, not a level); on = live
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._micItem = new PopupMenu.PopupSwitchMenuItem(_('Microphone'), true);
         this._micItem.connect('toggled', (_item, state) => {
@@ -163,12 +157,12 @@ class InzoneToggle extends QuickMenuToggle {
         this.menu.addMenuItem(this._micItem);
 
         this.connect('clicked', () => {
-            // Toggle = ANC on/off. Ambient sound is picked from the menu.
+            // The toggle switches ANC; ambient sound is picked in the menu.
             this._applyMode(this.checked ? Proto.NOISE_ANC : Proto.NOISE_OFF);
         });
     }
 
-    /** Did the user just touch a control — a poll must not overwrite it. */
+    /** True right after the user changed a control. */
     get _userIsHolding() {
         return GLib.get_monotonic_time() - this._lastUserAction < USER_HOLD_MS * 1000;
     }
@@ -197,7 +191,7 @@ class InzoneToggle extends QuickMenuToggle {
         this._renderNoise();
     }
 
-    /** setToggleState does not emit 'toggled' — no feedback loop. */
+    /** setToggleState does not emit 'toggled'. */
     updateMic(muted) {
         if (muted === null || this._userIsHolding)
             return;
@@ -218,8 +212,6 @@ class InzoneToggle extends QuickMenuToggle {
             : (b.left === b.right
                 ? `${low}%`
                 : `L ${b.left ?? '–'}% · R ${b.right ?? '–'}%`);
-        // Don't rely on String.prototype.format — the shell installs it in its
-        // own environment, but it is not a contract an extension should lean on.
         this.menu.setHeader('audio-headphones-symbolic', _('INZONE Buds'),
             low === null ? null : `${_('Battery')} ${low}%`);
     }
@@ -254,7 +246,7 @@ export default class InzoneExtension extends Extension {
         this._indicator = new InzoneIndicator(this._device);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
 
-        // The device reports earbud touches on its own — keep the UI live.
+        // The device reports earbud touches on its own.
         this._pushId = this._device.connect('pushed', (_dev, eventId, info) => {
             if (eventId === Proto.EV.NOISE)
                 this._indicator.toggle.updateNoise(Proto.decodeNoise(info.payload));
@@ -308,7 +300,7 @@ export default class InzoneExtension extends Extension {
             return;
 
         const device = this._device;
-        // disable() may run during any await below; it destroys the toggle.
+        // disable() may run during any await below.
         const stillEnabled = () => this._indicator?.toggle === toggle;
 
         if (!device.isOpen && !(await device.open())) {
@@ -318,11 +310,9 @@ export default class InzoneExtension extends Extension {
         }
 
         try {
-            // Battery + volume + balance in one request. Cheaper than asking separately.
+            // 0x06 returns battery, volume and balance in one reply.
             const bulk = await device.get(Proto.EV.STATUS_BULK);
             const noise = await device.get(Proto.EV.NOISE);
-            // 0x24 is not in the bulk status and has to be asked for. The device
-            // also reports it on its own (NTFY_ACTIVE) — this poll is a safety net.
             const mic = await device.get(Proto.EV.MIC_MUTE);
             if (!stillEnabled())
                 return;
@@ -331,7 +321,7 @@ export default class InzoneExtension extends Extension {
             toggle.updateMic(Proto.decodeMicMuted(mic.payload));
             toggle.visible = true;
         } catch (e) {
-            // The buds may be in the case / off; dongle plugged in but no answer.
+            // Dongle present but the buds do not answer (e.g. in the case).
             if (stillEnabled())
                 toggle.visible = false;
         }

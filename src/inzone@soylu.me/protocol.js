@@ -2,8 +2,8 @@
 //
 // Sony INZONE vendor HCI-over-HID protocol.
 //
-// Pure functions — NO Gio/Shell dependency, so this can be tested on its own
-// under node (see tools/js-selftest.mjs).
+// No GNOME imports, so tools/js-selftest.mjs runs it in node. See
+// docs/protocol.md for how each value was measured.
 //
 // Frame:
 //   [0]      report id = 0x02
@@ -17,11 +17,7 @@
 //   [10]     event_type
 //   [11..12] transaction id (LE)
 //   [13..N]  payload
-//   [N+1]    checksum = sum(buf[6..N]) & 0xFF
-//
-// The checksum starts at buf[6] in both directions. The H5 driver's read-side
-// formula, buf[5..N], gives the same result only for EVENTs, where buf[5] is a
-// zero dummy; in a COMMAND buf[5]=param_length and the sum comes out wrong.
+//   [N+1]    checksum = sum(buf[6..N]) & 0xFF, in both directions
 
 export const REPORT_SIZE = 64;
 export const REPORT_ID = 0x02;
@@ -47,31 +43,19 @@ export const EV = {
     NOISE: 0x41,
 };
 
-// 0x41 byte[0]. Mapping VERIFIED on the device. An earlier 0=ANC / 1=off
-// reading was WRONG: in a listening test the passive isolation of "off" mode
-// was mistaken for ANC.
+// 0x41 byte[0]
 export const NOISE_OFF = 0;
 export const NOISE_ANC = 1;
 export const NOISE_AMBIENT = 2;
 
 export const AMBIENT_MAX = 20;   // Sony's range is 0-20
 
-// 0x24 is NOT a level but a mute switch (measured). Touch-and-hold on the left
-// bud flipped byte[0] between 00 and 01 while byte[1..2] stayed 0xFF throughout
-// -- there is no level there. Polarity was confirmed against the input level.
-// "MIC_VOLUME" was a wrong label inherited from the H5.
+// 0x24 byte[0]: a mute switch, not a level
 export const MIC_ON = 0;
 export const MIC_MUTED = 1;
-// 0x22's ceiling and direction were MEASURED. The earlier 90 was an unfounded
-// assumption carried over from the H5: the device accepted SET 0x64 and read it
-// back unclipped. The direction was inverted too — 0 MUTES the game stream and
-// 100 gives it full level.
 export const BALANCE_MAX = 100;  // 0 = all chat (game muted), 100 = all game
 
-// Values that are NOT multiples of 10 are silently REJECTED by the device
-// (measured): for SET 0x37 (55) the NTFY returned the old value, while SET 0x32
-// (50) was accepted in the same session. So the rounding below is required, not
-// cautious -- without it most slider positions would silently do nothing.
+// The device silently rejects balance values that are not multiples of 10.
 export const BALANCE_STEP = 10;
 export const VOLUME_MAX = 50;
 
