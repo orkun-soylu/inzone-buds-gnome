@@ -2,7 +2,7 @@
   "uuid": "inzone@soylu.me",
   "name": "INZONE Buds",
   "description": "Quick Settings control for Sony INZONE Buds — battery, noise cancelling, ambient sound level, game/chat balance and microphone mute. Works through the USB-C dongle; needs a udev rule for access (see the README).",
-  "shell-version": ["48"],
+  "shell-version": ["48", "49", "50", "51"],
   "url": "https://github.com/orkun-soylu/inzone-buds-gnome",
   "version": 2
 }

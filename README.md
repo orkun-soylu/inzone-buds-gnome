@@ -25,7 +25,7 @@ JavaScript: no helper binary, no system package, nothing installed outside
 
 ## Requirements
 
-* GNOME Shell 48 (developed on Debian 13; Wayland or X11)
+* GNOME Shell 48, 49, 50 or 51 (developed on Debian 13; Wayland or X11)
 * Sony INZONE Buds with their USB-C dongle (`054c:0ec2`)
 * `make` (and `zip`, only for `make pack`; `node` and `python3`, only for
   `make check`)
