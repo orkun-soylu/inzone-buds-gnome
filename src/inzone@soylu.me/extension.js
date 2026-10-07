@@ -223,6 +223,20 @@ class InzoneToggle extends QuickMenuToggle {
         this.menu.setHeader('audio-headphones-symbolic', _('INZONE Buds'),
             low === null ? null : `${_('Battery')} ${low}%`);
     }
+
+    destroy() {
+        for (const item of this._modeItems.values())
+            item.destroy();
+        this._modeItems.clear();
+        this._ambientRow.destroy();
+        this._ambientRow = null;
+        this._balanceRow.destroy();
+        this._balanceRow = null;
+        this._micItem.destroy();
+        this._micItem = null;
+        this._device = null;
+        super.destroy();
+    }
 });
 
 const InzoneIndicator = GObject.registerClass(
@@ -293,25 +307,33 @@ export default class InzoneExtension extends Extension {
         if (!toggle)
             return;
 
-        if (!this._device.isOpen && !this._device.open()) {
-            toggle.visible = false;   // dongle not plugged in
+        const device = this._device;
+        // disable() may run during any await below; it destroys the toggle.
+        const stillEnabled = () => this._indicator?.toggle === toggle;
+
+        if (!device.isOpen && !(await device.open())) {
+            if (stillEnabled())
+                toggle.visible = false;   // dongle not plugged in
             return;
         }
 
         try {
             // Battery + volume + balance in one request. Cheaper than asking separately.
-            const bulk = await this._device.get(Proto.EV.STATUS_BULK);
-            const noise = await this._device.get(Proto.EV.NOISE);
+            const bulk = await device.get(Proto.EV.STATUS_BULK);
+            const noise = await device.get(Proto.EV.NOISE);
             // 0x24 is not in the bulk status and has to be asked for. The device
             // also reports it on its own (NTFY_ACTIVE) — this poll is a safety net.
-            const mic = await this._device.get(Proto.EV.MIC_MUTE);
+            const mic = await device.get(Proto.EV.MIC_MUTE);
+            if (!stillEnabled())
+                return;
             toggle.updateBulk(Proto.decodeBulk(bulk.payload));
             toggle.updateNoise(Proto.decodeNoise(noise.payload));
             toggle.updateMic(Proto.decodeMicMuted(mic.payload));
             toggle.visible = true;
         } catch (e) {
             // The buds may be in the case / off; dongle plugged in but no answer.
-            toggle.visible = false;
+            if (stillEnabled())
+                toggle.visible = false;
         }
     }
 }

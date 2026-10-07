@@ -24,31 +24,40 @@ const VID = 0x054c;
 const PID = 0x0ec2;
 const REQUEST_TIMEOUT_MS = 1500;
 
-/** Find the hidraw node carrying the 0xFF04 vendor collection; null if none. */
-export function findNode() {
+/** Read a small file without blocking the shell. Resolves with its bytes. */
+function readFile(path) {
+    return new Promise((resolve, reject) => {
+        Gio.File.new_for_path(path).load_contents_async(null, (file, res) => {
+            try {
+                resolve(file.load_contents_finish(res)[1]);
+            } catch (e) {
+                reject(e);
+            }
+        });
+    });
+}
+
+/** Find the hidraw node carrying the 0xFF04 vendor collection; resolves null if none. */
+export async function findNode() {
     const base = '/sys/class/hidraw';
-    let dir;
+    const names = [];
     try {
-        dir = GLib.Dir.open(base, 0);
+        const dir = GLib.Dir.open(base, 0);
+        let name;
+        while ((name = dir.read_name()) !== null)
+            names.push(name);
+        dir.close();
     } catch (e) {
         return null;
     }
     const want = `:${VID.toString(16).padStart(8, '0')}:${PID.toString(16).padStart(8, '0')}`
         .toUpperCase();
 
-    let name;
-    while ((name = dir.read_name()) !== null) {
+    for (const name of names) {
         const devDir = `${base}/${name}/device`;
         let uevent, desc;
         try {
-            const [okU, u] = GLib.file_get_contents(`${devDir}/uevent`);
-            if (!okU)
-                continue;
-            uevent = new TextDecoder().decode(u);
-            const [okD, d] = GLib.file_get_contents(`${devDir}/report_descriptor`);
-            if (!okD)
-                continue;
-            desc = d;
+            uevent = new TextDecoder().decode(await readFile(`${devDir}/uevent`));
         } catch (e) {
             continue;
         }
@@ -56,6 +65,12 @@ export function findNode() {
         const line = uevent.split('\n').find(l => l.startsWith('HID_ID='));
         if (!line || !line.slice(7).toUpperCase().endsWith(want))
             continue;
+
+        try {
+            desc = await readFile(`${devDir}/report_descriptor`);
+        } catch (e) {
+            continue;
+        }
 
         // Match the vendor collection by usage_page, NOT by usage:
         // the H5 reports usage 0x0002 for 0xFF04, the buds report 0x0001.
@@ -83,6 +98,7 @@ export const InzoneDevice = GObject.registerClass({
         this._pending = new Map();   // tid -> {resolve, reject, timeoutId}
         this._tid = 1;
         this._node = null;
+        this._generation = 0;   // bumped by close(), so an open() in flight can tell
     }
 
     get isOpen() {
@@ -93,14 +109,18 @@ export const InzoneDevice = GObject.registerClass({
         return this._node;
     }
 
-    /** Open the device. Returns false on failure (does not throw — this is the polling path). */
-    open() {
+    /** Open the device. Resolves false on failure (does not throw — this is the polling path). */
+    async open() {
         if (this.isOpen)
             return true;
 
-        const node = findNode();
-        if (node === null)
+        const generation = this._generation;
+        const node = await findNode();
+        // close() ran while the search was in flight (the extension was disabled)
+        if (generation !== this._generation)
             return false;
+        if (node === null || this.isOpen)
+            return this.isOpen;
 
         try {
             this._stream = Gio.File.new_for_path(node).open_readwrite(null);
@@ -119,6 +139,7 @@ export const InzoneDevice = GObject.registerClass({
     }
 
     close() {
+        this._generation++;
         if (this._cancellable !== null) {
             this._cancellable.cancel();
             this._cancellable = null;
