@@ -1,31 +1,33 @@
-// Sony INZONE vendor HCI-over-HID protokolu.
+// SPDX-License-Identifier: GPL-2.0-or-later
 //
-// Saf fonksiyonlar — Gio/Shell bagimliligi YOK, boylece `gjs` ile tek basina
-// test edilebilir (bkz. tools/gjs-selftest.js).
+// Sony INZONE vendor HCI-over-HID protocol.
 //
-// Cerceve:
+// Pure functions — NO Gio/Shell dependency, so this can be tested on its own
+// under node (see tools/js-selftest.mjs).
+//
+// Frame:
 //   [0]      report id = 0x02
 //   [1]      hid_length = 12 + payload
-//   [2]      0x01 COMMAND (host->cihaz) | 0x04 EVENT (cihaz->host)
+//   [2]      0x01 COMMAND (host->device) | 0x04 EVENT (device->host)
 //   [3..4]   COMMAND: opcode 0xFC00 (LE)  |  EVENT: [3]=0xFF event code, [4]=param_length
 //   [5]      COMMAND: param_length        |  EVENT: dummy 0x00
 //   [6..7]   sony key 0xC396 (LE: 96 c3)
-//   [8]      address = (dst<<4)|src   1=PC 2=TX(dongle) 4=RX(kulaklik)
+//   [8]      address = (dst<<4)|src   1=PC 2=TX(dongle) 4=RX(earbuds)
 //   [9]      event_id
 //   [10]     event_type
 //   [11..12] transaction id (LE)
 //   [13..N]  payload
 //   [N+1]    checksum = sum(buf[6..N]) & 0xFF
 //
-// Checksum kurali her iki yonde de buf[6]'dan baslar. H5 surucusunun okuma
-// tarafindaki buf[5..N] formulu yalnizca EVENT'lerde buf[5] sifir dummy oldugu
-// icin ayni sonucu verir; COMMAND'da buf[5]=param_length ve yanlis cikar.
+// The checksum starts at buf[6] in both directions. The H5 driver's read-side
+// formula, buf[5..N], gives the same result only for EVENTs, where buf[5] is a
+// zero dummy; in a COMMAND buf[5]=param_length and the sum comes out wrong.
 
 export const REPORT_SIZE = 64;
 export const REPORT_ID = 0x02;
 const KEY_LO = 0x96, KEY_HI = 0xc3;
 
-export const ADDR_PC_TO_RX = 0x41;   // kulaklik
+export const ADDR_PC_TO_RX = 0x41;   // earbuds
 export const ADDR_PC_TO_TX = 0x21;   // dongle
 
 export const GET = 0x01;
@@ -45,34 +47,35 @@ export const EV = {
     NOISE: 0x41,
 };
 
-// 0x41 byte[0]. Esleme kullanici tarafindan cihaz uzerinde DOGRULANDI
-// (2026-09-03). Onceki 0=ANC / 1=kapali okumasi YANLISTI; dinleme testinde
-// kapali moddaki pasif yalitim ANC sanilmisti.
+// 0x41 byte[0]. Mapping VERIFIED on the device. An earlier 0=ANC / 1=off
+// reading was WRONG: in a listening test the passive isolation of "off" mode
+// was mistaken for ANC.
 export const NOISE_OFF = 0;
 export const NOISE_ANC = 1;
 export const NOISE_AMBIENT = 2;
 
-export const AMBIENT_MAX = 20;   // Sony araligi 0-20
+export const AMBIENT_MAX = 20;   // Sony's range is 0-20
 
-// 0x24 SEVIYE DEGIL, mute anahtari (olculdu 2026-09-03). Sol kulaklikta
-// dokun-ve-tut ile byte[0] 00<->01 arasinda gidip geldi, byte[1..2] boyunca
-// 0xFF sabit kaldi -- yani orada seviye yok. Polarite ses giris seviyesine
-// bakilarak dogrulandi. "MIC_VOLUME" adi H5'ten miras yanlis etiketti.
+// 0x24 is NOT a level but a mute switch (measured). Touch-and-hold on the left
+// bud flipped byte[0] between 00 and 01 while byte[1..2] stayed 0xFF throughout
+// -- there is no level there. Polarity was confirmed against the input level.
+// "MIC_VOLUME" was a wrong label inherited from the H5.
 export const MIC_ON = 0;
 export const MIC_MUTED = 1;
-// 0x22 tavani ve yonu OLCULDU (2026-09-03, laptop). Onceki 90 H5'ten tasinmis
-// dayanaksiz bir varsayimdi: cihaz SET 0x64'u kabul etti ve geri okudu, kirpmadi.
-// Yon de tersti — 0 oyun akisini SUSTURUYOR, 100 tam guclu veriyor.
-export const BALANCE_MAX = 100;  // 0 = tam sohbet (oyun kisik), 100 = tam oyun
+// 0x22's ceiling and direction were MEASURED. The earlier 90 was an unfounded
+// assumption carried over from the H5: the device accepted SET 0x64 and read it
+// back unclipped. The direction was inverted too — 0 MUTES the game stream and
+// 100 gives it full level.
+export const BALANCE_MAX = 100;  // 0 = all chat (game muted), 100 = all game
 
-// 10'un kati OLMAYAN degerler cihaz tarafindan sessizce REDDEDILIYOR (olculdu
-// 2026-09-03): SET 0x37 (55) icin NTFY eski degeri geri dondu, ayni oturumda
-// SET 0x32 (50) kabul edildi. Yani asagidaki yuvarlama ihtiyat degil zorunluluk
-// -- olmasa slider konumlarinin cogu sessizce hicbir sey yapmazdi.
+// Values that are NOT multiples of 10 are silently REJECTED by the device
+// (measured): for SET 0x37 (55) the NTFY returned the old value, while SET 0x32
+// (50) was accepted in the same session. So the rounding below is required, not
+// cautious -- without it most slider positions would silently do nothing.
 export const BALANCE_STEP = 10;
 export const VOLUME_MAX = 50;
 
-/** COMMAND cercevesi kur. payload: sayi dizisi. */
+/** Build a COMMAND frame. payload: array of numbers. */
 export function buildCommand(address, eventId, eventType, tid, payload = []) {
     const n = payload.length;
     const buf = new Uint8Array(REPORT_SIZE);
@@ -99,7 +102,7 @@ export function buildCommand(address, eventId, eventType, tid, payload = []) {
     return buf;
 }
 
-/** EVENT cercevesini coz. Sony cercevesi degilse null. */
+/** Parse an EVENT frame. null if it is not a Sony frame. */
 export function parseEvent(buf) {
     if (buf.length < 14 || buf[0] !== REPORT_ID)
         return null;
@@ -110,14 +113,14 @@ export function parseEvent(buf) {
         return null;
     if (buf[6] !== KEY_LO || buf[7] !== KEY_HI)
         return null;
-    if ((buf[8] >> 4) !== 0x1)      // hedef PC olmali
+    if ((buf[8] >> 4) !== 0x1)      // destination must be the PC
         return null;
 
     let sum = 0;
     for (let i = 6; i <= n; i++)
         sum += buf[i];
     if ((sum & 0xff) !== buf[n + 1])
-        return null;                // bozuk cerceve — sessizce at
+        return null;                // corrupt frame — drop it silently
 
     return {
         eventId: buf[9],
@@ -127,7 +130,7 @@ export function parseEvent(buf) {
     };
 }
 
-/** 0x04 payload'i -> {right, left, case} yuzde; bilinmiyorsa null. */
+/** 0x04 payload -> {right, left, case} in percent; null where unknown. */
 export function decodeBattery(p) {
     if (p.length < 6)
         return null;
@@ -135,7 +138,7 @@ export function decodeBattery(p) {
     return {right: one(p[1]), left: one(p[3]), case: one(p[5])};
 }
 
-/** 0x06 toplu durum -> batarya + ses + balance. */
+/** 0x06 bulk status -> battery + volume + balance. */
 export function decodeBulk(p) {
     if (p.length < 11)
         return null;
@@ -146,14 +149,14 @@ export function decodeBulk(p) {
     };
 }
 
-/** 0x24 -> true = mikrofon kapali. */
+/** 0x24 -> true = microphone muted. */
 export function decodeMicMuted(p) {
     if (!p.length)
         return null;
     return p[0] === MIC_MUTED;
 }
 
-/** 0x24 SET payload'i. byte[1..2] = 0xFF, cihazin kendi cercevesindeki gibi. */
+/** 0x24 SET payload. byte[1..2] = 0xFF, as in the device's own frame. */
 export function encodeMicMuted(muted) {
     return [muted ? MIC_MUTED : MIC_ON, 0xff, 0xff];
 }
@@ -165,12 +168,12 @@ export function decodeNoise(p) {
     return {mode: p[0], ambient: p[1]};
 }
 
-/** 0x41 SET payload'i. byte[2]=0xFF placeholder, byte[3]=0x00 (olculdu). */
+/** 0x41 SET payload. byte[2]=0xFF placeholder, byte[3]=0x00 (measured). */
 export function encodeNoise(mode, ambient) {
     return [mode & 0xff, Math.max(0, Math.min(AMBIENT_MAX, ambient)), 0xff, 0x00];
 }
 
-/** Kalan en dusuk kulaklik yuzdesi — gosterge icin. Ikisi de yoksa null. */
+/** Lowest remaining earbud percentage — for the indicator. null if neither is known. */
 export function lowestBud(battery) {
     if (battery === null)
         return null;

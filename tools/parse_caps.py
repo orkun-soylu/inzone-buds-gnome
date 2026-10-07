@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""0x8C / 0x8D yetenek tablosu cozumleyici — DONANIMSIZ, capture dosyasindan calisir.
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""0x8C / 0x8D capability-table parser — NO HARDWARE, works from a capture file.
 
-Girdi: query.py --sweep ciktisi (ornek captures/sweep-hi.txt). Ayni event_id'ye ait
-ardisik cerceveler birlestirilir; iki event_id de cok parcali cevap veriyor.
+Input: query.py --sweep output (e.g. captures/sweep-hi.txt). Consecutive frames of
+the same event_id are joined; both event_ids answer in several parts.
 
-Gramer — captures/sweep-hi.txt'teki her parcanin TAMAMINI tuketiyor (artan 0):
+Grammar — consumes ALL of every part in captures/sweep-hi.txt (0 bytes left over):
 
-    [0..3]   cevap basligi 02 00 00 00
-    parca:   <tur> <kayitlar...>            parcalar 01 00 10 ile ayriliyor
-    BOLUM 1  <id> <count:LE16> <count x (slot, deger)>
-    ayirac   <kendi kimligi>                 RX kopyasinda 0x71, TX'te 0x72
-    BOLUM 2  <00> <count> ardindan <slot> <id> <len:LE16> <len-1 bayt>
-    kapanis  BOLUM 1 grameriyle tek kayit, id=0xFF, hepsi sifir
+    [0..3]   reply header 02 00 00 00
+    part:    <kind> <records...>            parts are separated by 01 00 10
+    SECTION 1  <id> <count:LE16> <count x (slot, value)>
+    separator  <own identity>               0x71 in the RX copy, 0x72 in TX
+    SECTION 2  <00> <count> then <slot> <id> <len:LE16> <len-1 bytes>
+    trailer    one record in SECTION 1 grammar, id=0xFF, all zero
 
-slot uzayi her iki bolumde de ayni: {0x00, 0x01, 0x02, 0x07}.
+The slot space is the same in both sections: {0x00, 0x01, 0x02, 0x07}.
 
-⚠️ Parca ayirici desen olarak araniyor; ayni ucluyu tasiyan bir veri alani
-cozumlemeyi bozar. Bugunku yakalamalarda boyle bir durum yok.
+⚠️ The part separator is searched for as a byte pattern; a data field carrying
+the same three bytes would break the parse. No capture so far does.
 """
 import re
 import sys
@@ -26,7 +27,7 @@ H = lambda b: " ".join("%02x" % x for x in b)
 
 
 def load(path, want):
-    """Capture dosyasindan tek bir event_id'nin cerceverini birlestirir."""
+    """Join the frames of one event_id from a capture file."""
     out = bytearray()
     for ln in open(path):
         m = re.match(r"^(\S+)\s+(\S+)\s+(\S+)\s+((?:[0-9a-f]{2} ?)+)", ln)
@@ -36,7 +37,7 @@ def load(path, want):
 
 
 def group(buf, i):
-    """BOLUM 1 kaydi: <id> <count:LE16> <count x (slot,deger)>."""
+    """SECTION 1 record: <id> <count:LE16> <count x (slot,value)>."""
     eid, cnt = buf[i], buf[i + 1] | (buf[i + 2] << 8)
     pairs = [(buf[i + 3 + 2 * k], buf[i + 4 + 2 * k]) for k in range(cnt)]
     return eid, pairs, i + 3 + 2 * cnt
@@ -47,26 +48,26 @@ def is_group(buf, i):
 
 
 def parse(body, indent="    "):
-    print("%stur           : %02x" % (indent, body[0]))
+    print("%skind          : %02x" % (indent, body[0]))
     i = 1
     while is_group(body, i):
         eid, pairs, i = group(body, i)
         print("%s  id=%02x  %s" % (indent, eid, "  ".join("%02x->%02x" % p for p in pairs)))
 
     if i < len(body):
-        print("%skendi kimligi : %02x   (71=kulaklik / 72=dongle)" % (indent, body[i]))
+        print("%sown identity  : %02x   (71=earbuds / 72=dongle)" % (indent, body[i]))
         i += 1
-        assert body[i] == 0, "beklenmeyen dolgu %02x" % body[i]
+        assert body[i] == 0, "unexpected padding %02x" % body[i]
         n = body[i + 1]
         i += 2
-        print("%sBOLUM 2 — slot basina event_id listesi (%d kayit)" % (indent, n))
+        print("%sSECTION 2 — event_id list per slot (%d records)" % (indent, n))
         for _ in range(n):
             slot, eid = body[i], body[i + 1]
             ln = body[i + 2] | (body[i + 3] << 8)
             print("%s  slot=%02x id=%02x  [%s]" % (indent, slot, eid, H(body[i + 4 : i + 3 + ln])))
             i += 3 + ln
         eid, pairs, i = group(body, i)
-        print("%skapanis       : id=%02x  %s" % (indent, eid, "  ".join("%02x->%02x" % p for p in pairs)))
+        print("%strailer       : id=%02x  %s" % (indent, eid, "  ".join("%02x->%02x" % p for p in pairs)))
     return len(body) - i
 
 
@@ -77,21 +78,21 @@ def main():
         blob = load(path, want)
         if not blob:
             continue
-        print("== %s — %d bayt birlestirildi" % (want, len(blob)))
+        print("== %s — %d bytes joined" % (want, len(blob)))
         parts = blob[4:].split(MARK)
         if len(parts) > 1:
-            print("   %d parca (01 00 10 ayiraci)" % len(parts))
+            print("   %d parts (01 00 10 separator)" % len(parts))
         if len(parts) == 2 and len(parts[0]) == len(parts[1]):
             d = [k for k in range(len(parts[0])) if parts[0][k] != parts[1][k]]
-            print("   iki parcanin farkli baytlari: %s" % (d or "yok"))
+            print("   bytes that differ between the two parts: %s" % (d or "none"))
         for k, part in enumerate(parts):
-            print("   parca %d (%d bayt)" % (k + 1, len(part)))
+            print("   part %d (%d bytes)" % (k + 1, len(part)))
             try:
                 left = parse(part)
-                print("    artan: %d%s" % (left, "  <-- GRAMER TUTMADI" if left else ""))
+                print("    left over: %d%s" % (left, "  <-- GRAMMAR DID NOT FIT" if left else ""))
                 rc |= 1 if left else 0
             except (AssertionError, IndexError) as e:
-                print("    cozulemedi: %s" % e)
+                print("    could not parse: %s" % e)
                 rc = 1
         print()
     return rc

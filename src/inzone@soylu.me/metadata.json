@@ -1,7 +1,8 @@
 {
   "uuid": "inzone@soylu.me",
   "name": "INZONE Buds",
-  "description": "Sony INZONE Buds kontrol paneli — pil, gürültü engelleme, ortam sesi seviyesi ve oyun/sohbet dengesi. USB-C dongle üzerinden çalışır.",
+  "description": "Quick Settings control for Sony INZONE Buds — battery, noise cancelling, ambient sound level, game/chat balance and microphone mute. Works through the USB-C dongle; needs a udev rule for access (see the README).",
   "shell-version": ["48"],
-  "version": 1
+  "url": "https://github.com/orkun-soylu/inzone-buds-gnome",
+  "version": 2
 }

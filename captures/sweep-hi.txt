@@ -1,22 +1,22 @@
-# INZONE Buds event_id taramasi 0x44..0xFF
+# INZONE Buds event_id sweep 0x44..0xFF
 
-EVENT_ID                 adres     event_type        payload
+EVENT_ID                 address   event_type        payload
 ------------------------------------------------------------------------------
 BATTERY_INFO(0x04)       push      NTFY_ACTIVE(0xA0) 00 5d 00 5d ff 64
 NOISE_CONTROL(0x41)      push      NTFY_ACTIVE(0xA0) 00 14 ff 00
 NOISE_CONTROL(0x41)      push      NTFY_ACTIVE(0xA0) 01 14 ff 00
 NOISE_CONTROL(0x41)      push      NTFY_ACTIVE(0xA0) 02 14 ff 00
-UNKNOWN(0x81)            PC->RX    RET(0x10)         0f   <-- YENI
-UNKNOWN(0x83)            PC->RX    RET(0x10)         00   <-- YENI
-UNKNOWN(0x84)            PC->RX    RET(0x10)         01   <-- YENI
-UNKNOWN(0x85)            PC->RX    RET(0x10)         00   <-- YENI
-UNKNOWN(0x86)            PC->RX    RET(0x10)         05 01 02 04 00 01 02 04   <-- YENI
-UNKNOWN(0x87)            PC->RX    RET(0x10)         00 00 01 00   <-- YENI
-UNKNOWN(0x89)            PC->RX    RET(0x10)         00 00 00 00 00 00   <-- YENI
-UNKNOWN(0x8C)            PC->RX    RET(0x10)         02 00 00 00 06 00 04 00 00 01 01 00 02 00 07 70 10 04 00 00 23 01 00 02 00 07 24 70 04 00 00 71 01 00 02 00 07 72 20 04 00 00 20 01 21 02 22 07 00 71   <-- YENI
-UNKNOWN(0x8C)            PC->RX    RET(0x10)         00 04 00 23 0a 00 01 20 21 22 23 24 70 71 72 01 24 0a 00 01 20 21 22 23 24 70 71 72 02 01 0a 00 01 20 21 22 23 24 70 71 72 07 70 0b 00 01 20 21 22 23   <-- YENI
-UNKNOWN(0x8C)            PC->RX    RET(0x10)         24 70 71 72 10 ff 04 00 00 00 01 00 02 00 07 00 01 00 10 06 00 04 00 00 01 01 00 02 00 07 70 10 04 00 00 23 01 00 02 00 07 24 70 04 00 00 71 01 00 02   <-- YENI
-UNKNOWN(0x8C)            PC->TX    RET(0x10)         00 07 72 20 04 00 00 20 01 21 02 22 07 00 72 00 04 00 23 0a 00 01 20 21 22 23 24 70 71 72 01 24 0a 00 01 20 21 22 23 24 70 71 72 02 01 0a 00 01 20 21   <-- YENI
-UNKNOWN(0x8C)            PC->TX    RET(0x10)         22 23 24 70 71 72 07 70 0b 00 01 20 21 22 23 24 70 71 72 10 ff 04 00 00 00 01 00 02 00 07 00   <-- YENI
-UNKNOWN(0x8D)            PC->RX    RET(0x10)         02 00 00 00 01 00 04 00 00 01 01 00 02 00 07 70 01 00 10 01 10 04 00 00 23 01 00 02 00 07 24   <-- YENI
-UNKNOWN(0x8E)            PC->RX    RET(0x10)         00   <-- YENI
+UNKNOWN(0x81)            PC->RX    RET(0x10)         0f   <-- NEW
+UNKNOWN(0x83)            PC->RX    RET(0x10)         00   <-- NEW
+UNKNOWN(0x84)            PC->RX    RET(0x10)         01   <-- NEW
+UNKNOWN(0x85)            PC->RX    RET(0x10)         00   <-- NEW
+UNKNOWN(0x86)            PC->RX    RET(0x10)         05 01 02 04 00 01 02 04   <-- NEW
+UNKNOWN(0x87)            PC->RX    RET(0x10)         00 00 01 00   <-- NEW
+UNKNOWN(0x89)            PC->RX    RET(0x10)         00 00 00 00 00 00   <-- NEW
+UNKNOWN(0x8C)            PC->RX    RET(0x10)         02 00 00 00 06 00 04 00 00 01 01 00 02 00 07 70 10 04 00 00 23 01 00 02 00 07 24 70 04 00 00 71 01 00 02 00 07 72 20 04 00 00 20 01 21 02 22 07 00 71   <-- NEW
+UNKNOWN(0x8C)            PC->RX    RET(0x10)         00 04 00 23 0a 00 01 20 21 22 23 24 70 71 72 01 24 0a 00 01 20 21 22 23 24 70 71 72 02 01 0a 00 01 20 21 22 23 24 70 71 72 07 70 0b 00 01 20 21 22 23   <-- NEW
+UNKNOWN(0x8C)            PC->RX    RET(0x10)         24 70 71 72 10 ff 04 00 00 00 01 00 02 00 07 00 01 00 10 06 00 04 00 00 01 01 00 02 00 07 70 10 04 00 00 23 01 00 02 00 07 24 70 04 00 00 71 01 00 02   <-- NEW
+UNKNOWN(0x8C)            PC->TX    RET(0x10)         00 07 72 20 04 00 00 20 01 21 02 22 07 00 72 00 04 00 23 0a 00 01 20 21 22 23 24 70 71 72 01 24 0a 00 01 20 21 22 23 24 70 71 72 02 01 0a 00 01 20 21   <-- NEW
+UNKNOWN(0x8C)            PC->TX    RET(0x10)         22 23 24 70 71 72 07 70 0b 00 01 20 21 22 23 24 70 71 72 10 ff 04 00 00 00 01 00 02 00 07 00   <-- NEW
+UNKNOWN(0x8D)            PC->RX    RET(0x10)         02 00 00 00 01 00 04 00 00 01 01 00 02 00 07 70 01 00 10 01 10 04 00 00 23 01 00 02 00 07 24   <-- NEW
+UNKNOWN(0x8E)            PC->RX    RET(0x10)         00   <-- NEW

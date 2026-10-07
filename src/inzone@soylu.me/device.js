@@ -1,13 +1,22 @@
-// hidraw kesfi + asenkron I/O.
+// SPDX-License-Identifier: GPL-2.0-or-later
 //
-// GNOME Shell tek thread'lidir: burada HICBIR bloklayan okuma/yazma yok.
-// Surekli bir asenkron okuma dongusu var; gelen cerceveler ya bekleyen bir
-// istegin TID'iyle eslesir ya da kullanici kulakliga dokundugunda gelen
-// kendiliginden push'tur (NTFY_ACTIVE, tid=1) ve 'pushed' sinyali olur.
+// hidraw discovery + asynchronous I/O.
+//
+// GNOME Shell is single-threaded: there are NO blocking reads here. A
+// continuous asynchronous read loop runs; each incoming frame either matches
+// the TID of a pending request or is an unsolicited push sent when the user
+// touches an earbud (NTFY_ACTIVE, tid=1), and becomes the 'pushed' signal.
+//
+// Reads go through a GioUnix stream on the node's file descriptor. That stream
+// is pollable, so a pending read waits on the main loop rather than parking a
+// worker thread in read(), and cancelling it on disable() takes effect at once.
+// The dongle only speaks when something changes, so a thread-based read could
+// stay blocked long after the extension was disabled (on every screen lock).
 
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import GioUnix from 'gi://GioUnix';
 
 import * as Proto from './protocol.js';
 
@@ -15,7 +24,7 @@ const VID = 0x054c;
 const PID = 0x0ec2;
 const REQUEST_TIMEOUT_MS = 1500;
 
-/** 0xFF04 vendor collection tasiyan hidraw node'unu bul; yoksa null. */
+/** Find the hidraw node carrying the 0xFF04 vendor collection; null if none. */
 export function findNode() {
     const base = '/sys/class/hidraw';
     let dir;
@@ -48,8 +57,8 @@ export function findNode() {
         if (!line || !line.slice(7).toUpperCase().endsWith(want))
             continue;
 
-        // Vendor collection'i usage'a gore DEGIL usage_page'e gore ara:
-        // H5 0xFF04 icin usage 0x0002 diyor, buds'ta usage 0x0001.
+        // Match the vendor collection by usage_page, NOT by usage:
+        // the H5 reports usage 0x0002 for 0xFF04, the buds report 0x0001.
         for (let i = 0; i + 2 < desc.length; i++) {
             if (desc[i] === 0x06 && desc[i + 1] === 0x04 && desc[i + 2] === 0xff)
                 return `/dev/${name}`;
@@ -61,7 +70,7 @@ export function findNode() {
 export const InzoneDevice = GObject.registerClass({
     GTypeName: 'InzoneDevice',
     Signals: {
-        // cihazdan kendiliginden gelen degisiklik (kulakliga dokunuldu)
+        // a change the device reported on its own (an earbud was touched)
         'pushed': {param_types: [GObject.TYPE_UINT, GObject.TYPE_JSOBJECT]},
     },
 }, class InzoneDevice extends GObject.Object {
@@ -84,7 +93,7 @@ export const InzoneDevice = GObject.registerClass({
         return this._node;
     }
 
-    /** Cihazi ac. Basarisizsa false doner (hata firlatmaz — yoklama yolu bu). */
+    /** Open the device. Returns false on failure (does not throw — this is the polling path). */
     open() {
         if (this.isOpen)
             return true;
@@ -95,7 +104,8 @@ export const InzoneDevice = GObject.registerClass({
 
         try {
             this._stream = Gio.File.new_for_path(node).open_readwrite(null);
-            this._input = this._stream.get_input_stream();
+            const fd = this._stream.get_input_stream().get_fd();
+            this._input = GioUnix.InputStream.new(fd, false);   // fd stays owned by _stream
             this._output = this._stream.get_output_stream();
         } catch (e) {
             this._stream = this._input = this._output = null;
@@ -116,22 +126,22 @@ export const InzoneDevice = GObject.registerClass({
         for (const [, p] of this._pending) {
             if (p.timeoutId)
                 GLib.source_remove(p.timeoutId);
-            p.reject(new Error('cihaz kapatildi'));
+            p.reject(new Error('device closed'));
         }
         this._pending.clear();
 
         try {
             this._stream?.close(null);
         } catch (e) {
-            // kapanis hatasi onemsiz
+            // a failed close does not matter
         }
         this._stream = this._input = this._output = null;
         this._node = null;
     }
 
     _nextTid() {
-        // 0 ve 1 kullanilmaz: dongle'in kendi push'lari tid=1 tasir, yeniden
-        // kullanilirsa bir push bizim cevabimiz sanilir.
+        // 0 and 1 are never used: the dongle's own pushes carry tid=1, and
+        // reusing it would make a push look like our reply.
         this._tid += 1;
         if (this._tid > 0xfff0 || this._tid < 2)
             this._tid = 2;
@@ -154,6 +164,11 @@ export const InzoneDevice = GObject.registerClass({
                     return;
                 }
 
+                if (data.length === 0) {    // EOF: the node went away
+                    this._onDisconnect();
+                    return;
+                }
+
                 const info = Proto.parseEvent(data);
                 if (info !== null)
                     this._dispatch(info);
@@ -171,7 +186,7 @@ export const InzoneDevice = GObject.registerClass({
             waiter.resolve(info);
             return;
         }
-        // Bekleyen yok -> cihazin kendiliginden bildirimi.
+        // Nobody is waiting -> the device's own notification.
         this.emit('pushed', info.eventId, info);
     }
 
@@ -179,11 +194,11 @@ export const InzoneDevice = GObject.registerClass({
         this.close();
     }
 
-    /** GET/SET yolla, cevabi bekle. Promise<info>. Zaman asiminda reject. */
+    /** Send a GET/SET and wait for the reply. Promise<info>; rejects on timeout. */
     request(eventId, eventType, payload = [], address = Proto.ADDR_PC_TO_RX) {
         return new Promise((resolve, reject) => {
             if (!this.isOpen) {
-                reject(new Error('cihaz kapali'));
+                reject(new Error('device not open'));
                 return;
             }
             const tid = this._nextTid();
@@ -200,7 +215,7 @@ export const InzoneDevice = GObject.registerClass({
             const timeoutId = GLib.timeout_add(
                 GLib.PRIORITY_DEFAULT, REQUEST_TIMEOUT_MS, () => {
                     this._pending.delete(tid);
-                    reject(new Error(`0x${eventId.toString(16)} zaman asimi`));
+                    reject(new Error(`0x${eventId.toString(16)} timed out`));
                     return GLib.SOURCE_REMOVE;
                 });
 

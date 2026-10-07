@@ -1,16 +1,17 @@
 #!/usr/bin/env -S gjs -m
+// SPDX-License-Identifier: GPL-2.0-or-later
 //
-// GJS'ten /dev/hidraw erisimi calisiyor mu?  Extension'in ON KOSULU.
+// Does /dev/hidraw access work from GJS?  The extension's PREREQUISITE.
 //
-// Python tarafi protokolu zaten dogruladi. Burada sorulan tek sey: GNOME Shell'in
-// calistigi dilden (GJS/Gio) ayni cihaza yazip okuyabiliyor muyuz. Cevap evetse
-// extension saf GJS olabilir, ayri backend binary'sine gerek kalmaz.
+// The Python tools had already confirmed the protocol. The only question here:
+// can the language GNOME Shell runs in (GJS/Gio) write to and read from the same
+// device? If so, the extension can be pure GJS with no separate backend binary.
 //
-// Calistir:  sudo gjs -m tools/gjs-probe.js
+// Run:  sudo gjs -m tools/gjs-probe.js
 //
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import System from 'system';   // ESM modunda legacy `imports` yok
+import System from 'system';   // no legacy `imports` in ESM mode
 
 const VID = 0x054c;
 const PID = 0x0ec2;
@@ -26,13 +27,13 @@ const EVENT_NAMES = {
     0x22: 'GAME_CHAT_MIX_BALANCE',
     0x41: 'NOISE_CONTROL',
 };
-const NOISE_MODES = {0: 'kapali', 1: 'ANC', 2: 'ambient'};  // dogrulandi 2026-09-03
+const NOISE_MODES = {0: 'off', 1: 'ANC', 2: 'ambient'};  // verified on the device
 
 function hex(bytes) {
     return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
 }
 
-/** 054c:0ec2'ye ait, 0xFF04 vendor collection tasiyan hidraw node'unu bul. */
+/** Find the 054c:0ec2 hidraw node carrying the 0xFF04 vendor collection. */
 function findNode() {
     const base = '/sys/class/hidraw';
     let dir;
@@ -70,7 +71,7 @@ function findNode() {
     return null;
 }
 
-/** Sony vendor HCI COMMAND kur. checksum = sum(buf[6..N]) & 0xFF, konum buf[N+1]. */
+/** Build a Sony vendor HCI COMMAND. checksum = sum(buf[6..N]) & 0xFF, at buf[N+1]. */
 function buildCommand(address, eventId, eventType, tid, payload = []) {
     const n = payload.length;
     const buf = new Uint8Array(REPORT_SIZE);
@@ -97,7 +98,7 @@ function buildCommand(address, eventId, eventType, tid, payload = []) {
     return buf;
 }
 
-/** EVENT cercevesini coz; Sony cercevesi degilse null. */
+/** Parse an EVENT frame; null if it is not a Sony frame. */
 function parseEvent(buf) {
     if (buf[0] !== REPORT_ID)
         return null;
@@ -123,32 +124,32 @@ function parseEvent(buf) {
 
 function describe(eventId, p) {
     if (eventId === 0x04 && p.length === 6) {
-        const one = (st, pct) => pct === 0xff ? 'yok'
-            : `${pct}%${st === 0xff ? ' (durum bilinmiyor)' : st ? ' (sarj)' : ''}`;
-        return `batarya: sag=${one(p[0], p[1])}, sol=${one(p[2], p[3])}, kutu=${one(p[4], p[5])}`;
+        const one = (st, pct) => pct === 0xff ? 'absent'
+            : `${pct}%${st === 0xff ? ' (status unknown)' : st ? ' (charging)' : ''}`;
+        return `battery: right=${one(p[0], p[1])}, left=${one(p[2], p[3])}, case=${one(p[4], p[5])}`;
     }
     if (eventId === 0x41 && p.length >= 2)
-        return `gurultu kontrolu: ${NOISE_MODES[p[0]] ?? `bilinmeyen-${p[0]}`}, ambient=${p[1]}/20`;
+        return `noise control: ${NOISE_MODES[p[0]] ?? `unknown-${p[0]}`}, ambient=${p[1]}/20`;
     if (eventId === 0x21 && p.length >= 2)
-        return `ses seviyesi = ${p[1]}`;
+        return `volume = ${p[1]}`;
     return null;
 }
 
-// ---------------------------------------------------------------- ana akis
+// ---------------------------------------------------------------- main flow
 
 const node = findNode();
 if (node === null) {
-    printerr('HATA: 0xFF04 vendor collection tasiyan hidraw node bulunamadi.');
-    printerr('Dongle takili mi? sudo ile mi calistirdin?');
+    printerr('ERROR: no hidraw node carrying the 0xFF04 vendor collection was found.');
+    printerr('Is the dongle plugged in? Did you run this with sudo?');
     System.exit(1);
 }
 print(`Node: ${node}`);
 
-// Iki acma yolu var; hangisinin karakter aygitinda calistigini olcuyoruz.
-//  A) open_readwrite -> tek GFileIOStream (O_RDWR)
-//  B) read() + append_to() -> ayri giris/cikis akislari (O_RDONLY / O_WRONLY|O_APPEND)
-// A tercih edilir; hidraw'da calismazsa B'ye dusuyoruz. Ikisi de olmazsa saf GJS
-// yolu kapali demektir ve extension ayri bir backend binary'si gerektirir.
+// There are two ways to open it; we measure which one works on a character device.
+//  A) open_readwrite -> a single GFileIOStream (O_RDWR)
+//  B) read() + append_to() -> separate input/output streams (O_RDONLY / O_WRONLY|O_APPEND)
+// A is preferred; if it fails on hidraw we fall back to B. If neither works the
+// pure-GJS route is closed and the extension would need a separate backend binary.
 const file = Gio.File.new_for_path(node);
 let stream = null, input = null, output = null, howOpened = null;
 
@@ -158,20 +159,20 @@ try {
     output = stream.get_output_stream();
     howOpened = 'open_readwrite (O_RDWR)';
 } catch (e) {
-    print(`open_readwrite basarisiz: ${e.message}`);
-    print('yedek yola geciliyor: read() + append_to()');
+    print(`open_readwrite failed: ${e.message}`);
+    print('falling back to read() + append_to()');
     try {
         input = file.read(null);
         output = file.append_to(Gio.FileCreateFlags.NONE, null);
-        howOpened = 'read + append_to (ayri akislar)';
+        howOpened = 'read + append_to (separate streams)';
     } catch (e2) {
-        printerr(`HATA: ${node} hicbir yoldan acilamadi: ${e2.message}`);
-        printerr("Izin sorunuysa 'sudo' ile calistir.");
-        printerr('Degilse GJS hidraw\'a dogrudan erisemiyor -> extension backend binary gerektirir.');
+        printerr(`ERROR: ${node} could not be opened either way: ${e2.message}`);
+        printerr("If it is a permission problem, run with 'sudo'.");
+        printerr('Otherwise GJS cannot reach hidraw directly -> the extension needs a backend binary.');
         System.exit(1);
     }
 }
-print(`Acilis yontemi: ${howOpened}`);
+print(`Opened with: ${howOpened}`);
 
 const loop = new GLib.MainLoop(null, false);
 const queue = [0x04, 0x41, 0x21];
@@ -192,7 +193,7 @@ function next() {
     try {
         output.write_bytes(new GLib.Bytes(cmd), null);
     } catch (e) {
-        printerr(`   yazma hatasi: ${e.message}`);
+        printerr(`   write error: ${e.message}`);
         next();
         return;
     }
@@ -201,7 +202,7 @@ function next() {
     const timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
         if (!done) {
             done = true;
-            print('   (cevap yok — zaman asimi)');
+            print('   (no reply — timed out)');
             next();
         }
         return GLib.SOURCE_REMOVE;
@@ -216,13 +217,13 @@ function next() {
         try {
             data = src.read_bytes_finish(res).get_data();
         } catch (e) {
-            printerr(`   okuma hatasi: ${e.message}`);
+            printerr(`   read error: ${e.message}`);
             next();
             return;
         }
         const info = parseEvent(data);
         if (info === null) {
-            print(`   sony cercevesi degil: ${hex(data.slice(0, 20))}`);
+            print(`   not a sony frame: ${hex(data.slice(0, 20))}`);
         } else {
             print(`   <- 0x${info.eventId.toString(16)} tid=${info.tid} ` +
                   `payload=${hex(info.payload)}${info.checksumOk ? '' : '  !! checksum'}`);
@@ -246,14 +247,14 @@ try {
         output.close(null);
     }
 } catch (e) {
-    // kapanis hatasi sonucu degistirmez
+    // a failed close does not change the result
 }
 
 print('\n' + '='.repeat(60));
 if (okCount === 3) {
-    print(`SONUC: GJS hidraw uzerinden okuyup yaziyor (${howOpened}).`);
-    print('        Saf GJS extension MUMKUN, ayri backend binary gerekmiyor.');
+    print(`RESULT: GJS reads and writes over hidraw (${howOpened}).`);
+    print('        A pure-GJS extension IS possible, no separate backend binary needed.');
 } else {
-    print(`SONUC: ${okCount}/3 sorgu basarili. Ayrintiya bak;`);
-    print('       hicbiri gelmiyorsa extension ayri bir backend binary gerektirir.');
+    print(`RESULT: ${okCount}/3 queries succeeded. See the details above;`);
+    print('        if none came back the extension needs a separate backend binary.');
 }

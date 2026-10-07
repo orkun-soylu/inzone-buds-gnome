@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """
-INZONE Buds dongle'a Sony vendor HCI komutu yollar ve cevabi bekler.
+Sends a Sony vendor HCI command to the INZONE Buds dongle and waits for the reply.
 
-Bu, cihaza YAZAN ilk arac. Varsayilan davranis GET'tir — GET semantik olarak
-salt okumadir, cihazin durumunu degistirmez. SET icin acikca --set gerekir.
+This is the tool that WRITES to the device. The default is GET — a GET is
+read-only by meaning and does not change the device's state. SET requires an
+explicit --set.
 
-Neden gerekli: pasif dinleme 3 dakikada sifir rapor verdi. Dongle kendiliginden
-yayin yapmiyor; H5 surucusundeki gibi once host'un sormasi gerekiyor.
+Why it exists: passive listening gave zero reports in 3 minutes. The dongle only
+broadcasts when something changes; as with the H5 driver, the host has to ask.
 
-Kullanim:
-  sudo ./tools/query.py                    # batarya (0x04) sor, iki adresi de dene
-  sudo ./tools/query.py -e 0x22            # game/chat balance sor
-  sudo ./tools/query.py --scan             # bilinen event_id'leri tara (hepsi GET)
-  sudo ./tools/query.py --raw              # gelen her cerceveyi ham bas
+Usage:
+  sudo ./tools/query.py                    # ask for the battery (0x04), try both addresses
+  sudo ./tools/query.py -e 0x22            # ask for the game/chat balance
+  sudo ./tools/query.py --scan             # sweep the known event_ids (all GET)
+  sudo ./tools/query.py --raw              # print every incoming frame raw
 """
 
 import argparse
@@ -27,13 +29,13 @@ from sniff import (REPORT_SIZE, REPORT_ID, EVENT_ID, EVENT_TYPE, KEY_LO, KEY_HI,
 
 HCI_COMMAND = 0x01
 OPCODE_LO, OPCODE_HI = 0x00, 0xFC
-ADDR_PC_TO_RX = 0x41   # (RX<<4)|PC — kulaklik
-ADDR_PC_TO_TX = 0x21   # (TX<<4)|PC — dongle'in kendisi
+ADDR_PC_TO_RX = 0x41   # (RX<<4)|PC — earbuds
+ADDR_PC_TO_TX = 0x21   # (TX<<4)|PC — the dongle itself
 ETYPE_GET, ETYPE_SET = 0x01, 0x02
 
 
 def build_command(address, event_id, event_type, tid, payload=b"", cksum_lo=6):
-    """H5 buildCommand ile ayni duzen."""
+    """Same layout as the H5 buildCommand."""
     n = len(payload)
     buf = bytearray(REPORT_SIZE)
     buf[0] = REPORT_ID
@@ -54,7 +56,7 @@ def build_command(address, event_id, event_type, tid, payload=b"", cksum_lo=6):
 
 
 def drain(fd, seconds, raw=False, want=None):
-    """Verilen sure boyunca oku; cozulen cerceveleri dondur."""
+    """Read for the given time; return the parsed frames."""
     got = []
     end = time.time() + seconds
     while time.time() < end:
@@ -66,7 +68,7 @@ def drain(fd, seconds, raw=False, want=None):
         except BlockingIOError:
             continue
         except OSError as e:
-            print("    okuma hatasi: %s" % e)
+            print("    read error: %s" % e)
             break
         if not data:
             continue
@@ -74,7 +76,7 @@ def drain(fd, seconds, raw=False, want=None):
         kind, info = parse(buf)
         if kind is None:
             if raw:
-                print("    [sony-degil: %s] %s" % (info, buf[:24].hex(" ")))
+                print("    [not-sony: %s] %s" % (info, buf[:24].hex(" ")))
             continue
         got.append(info)
         note = describe_payload(info["event_id"], info["payload"])
@@ -92,10 +94,10 @@ def drain(fd, seconds, raw=False, want=None):
 
 
 def sweep(fd, addresses, lo, hi, timeout, raw=False, out=None):
-    """event_id araligini GET ile tara. Sadece GET — durum degistirmez."""
-    print("\nTarama: event_id 0x%02X..0x%02X, %s, GET, %.2f sn/adim"
+    """Sweep an event_id range with GET. GET only — changes no state."""
+    print("\nSweep: event_id 0x%02X..0x%02X, %s, GET, %.2f s/step"
           % (lo, hi, "/".join(addr_str(a) for a in addresses), timeout))
-    print("(Ctrl-C kismi sonucu basar)\n")
+    print("(Ctrl-C prints the partial result)\n")
 
     found = {}   # event_id -> [(address, event_type, payload_hex)]
     tid = 100
@@ -108,22 +110,22 @@ def sweep(fd, addresses, lo, hi, timeout, raw=False, out=None):
                 try:
                     os.write(fd, build_command(address, event_id, ETYPE_GET, tid))
                 except OSError as e:
-                    print("  0x%02X yazma hatasi: %s" % (event_id, e))
+                    print("  0x%02X write error: %s" % (event_id, e))
                     continue
                 for info in drain(fd, timeout, raw=raw):
-                    # ⚠️ Cerceveyi SORULAN event_id'ye degil, KENDI event_id'sine yaz.
-                    # Dongle NTFY_ACTIVE push'lari (tid=1) sorgudan bagimsiz araya
-                    # girer; loop degiskenine yazmak haritayi bozar.
+                    # ⚠️ Record the frame under its OWN event_id, not the one ASKED for.
+                    # The dongle's NTFY_ACTIVE pushes (tid=1) arrive independently of
+                    # the query; filing them under the loop variable corrupts the map.
                     got_id = info["event_id"]
                     solicited = info["event_type"] != 0xA0 and got_id == event_id
                     found.setdefault(got_id, []).append(
                         (address if solicited else None,
                          info["event_type"], info["payload"].hex(" ")))
     except KeyboardInterrupt:
-        print("\n(tarama kesildi)")
+        print("\n(sweep interrupted)")
 
     lines = []
-    lines.append("%-24s %-9s %-17s %s" % ("EVENT_ID", "adres", "event_type", "payload"))
+    lines.append("%-24s %-9s %-17s %s" % ("EVENT_ID", "address", "event_type", "payload"))
     lines.append("-" * 78)
     for event_id in sorted(found):
         seen_rows = set()
@@ -138,44 +140,44 @@ def sweep(fd, addresses, lo, hi, timeout, raw=False, out=None):
                 addr_str(address) if address is not None else "push",
                 "%s(0x%02X)" % (EVENT_TYPE.get(etype, "?"), etype),
                 phex or "-",
-                "" if name else "   <-- YENI"))
+                "" if name else "   <-- NEW"))
     body = "\n".join(lines)
     print("\n" + "=" * 78)
-    print("TARAMA SONUCU — %d event_id cevap verdi" % len(found))
+    print("SWEEP RESULT — %d event_ids answered" % len(found))
     print("=" * 78)
     print(body)
-    yeni = [e for e in found if e not in EVENT_ID]
-    print("\nbilinen: %d   yeni: %d" % (len(found) - len(yeni), len(yeni)))
-    if yeni:
-        print("yeni event_id'ler: %s" % ", ".join("0x%02X" % e for e in sorted(yeni)))
+    new = [e for e in found if e not in EVENT_ID]
+    print("\nknown: %d   new: %d" % (len(found) - len(new), len(new)))
+    if new:
+        print("new event_ids: %s" % ", ".join("0x%02X" % e for e in sorted(new)))
 
     if out:
         os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         with open(out, "w") as f:
-            f.write("# INZONE Buds event_id taramasi 0x%02X..0x%02X\n\n" % (lo, hi))
+            f.write("# INZONE Buds event_id sweep 0x%02X..0x%02X\n\n" % (lo, hi))
             f.write(body + "\n")
-        print("\nkaydedildi: %s" % out)
+        print("\nsaved: %s" % out)
     return found
 
 
 def main():
-    ap = argparse.ArgumentParser(description="INZONE Buds dongle'a GET/SET yollar")
+    ap = argparse.ArgumentParser(description="Send GET/SET to the INZONE Buds dongle")
     ap.add_argument("-n", "--node")
     ap.add_argument("-e", "--event", default="0x04",
-                    help="event_id (varsayilan 0x04 BATTERY_INFO)")
+                    help="event_id (default 0x04 BATTERY_INFO)")
     ap.add_argument("-a", "--address", choices=["rx", "tx", "both"], default="both")
     ap.add_argument("-t", "--timeout", type=float, default=2.0,
-                help="cevap bekleme (sn); tarama icin 0.3-0.4 yeterli")
+                    help="reply timeout (s); 0.3-0.4 is enough for a sweep")
     ap.add_argument("--cksum-lo", type=int, default=None,
-                    help="checksum toplama baslangici (varsayilan 6; cevap yoksa 4-7 denenir)")
-    ap.add_argument("--scan", action="store_true", help="bilinen event_id'leri sirayla GET'le")
-    ap.add_argument("--sweep", metavar="ARALIK", nargs="?", const="0x00-0xff",
-                    help="event_id araligini GET ile tara (varsayilan 0x00-0xff)")
-    ap.add_argument("--out", help="tarama sonucunu bu dosyaya yaz")
+                    help="checksum summation start (default 6; 4-7 are tried when there is no reply)")
+    ap.add_argument("--scan", action="store_true", help="GET every known event_id in turn")
+    ap.add_argument("--sweep", metavar="RANGE", nargs="?", const="0x00-0xff",
+                    help="sweep an event_id range with GET (default 0x00-0xff)")
+    ap.add_argument("--out", help="write the sweep result to this file")
     ap.add_argument("--raw", action="store_true")
     ap.add_argument("--set", dest="do_set", action="store_true",
-                    help="GET yerine SET yolla (DURUM DEGISTIRIR)")
-    ap.add_argument("--payload", default="", help="SET icin hex payload, or: '00 20'")
+                    help="send SET instead of GET (CHANGES STATE)")
+    ap.add_argument("--payload", default="", help="hex payload for SET, e.g. '00 20'")
     args = ap.parse_args()
 
     if args.node:
@@ -183,19 +185,19 @@ def main():
     else:
         nodes = [n for n in find_nodes() if n[1]]
         if not nodes:
-            sys.exit("HATA: %04x:%04x icin 0xFF04 vendor node bulunamadi." % (VID, PID))
+            sys.exit("ERROR: no 0xFF04 vendor node found for %04x:%04x." % (VID, PID))
         node = nodes[0][0]
     print("Node: %s" % node)
 
     if args.do_set:
-        print("\n!! SET modu — bu cihazin durumunu DEGISTIRIR.\n")
+        print("\n!! SET mode — this CHANGES the device's state.\n")
 
     try:
         fd = os.open(node, os.O_RDWR | os.O_NONBLOCK)
     except PermissionError:
-        sys.exit("HATA: izin yok, 'sudo' ile calistir.")
+        sys.exit("ERROR: permission denied, run with 'sudo'.")
     except OSError as e:
-        sys.exit("HATA: %s acilamadi: %s" % (node, e))
+        sys.exit("ERROR: cannot open %s: %s" % (node, e))
 
     addresses = {"rx": [ADDR_PC_TO_RX], "tx": [ADDR_PC_TO_TX],
                  "both": [ADDR_PC_TO_RX, ADDR_PC_TO_TX]}[args.address]
@@ -205,9 +207,9 @@ def main():
         try:
             lo, hi = int(lo_s, 0), int(hi_s or lo_s, 0)
         except ValueError:
-            sys.exit("HATA: --sweep araligi cozulemedi: %r (or: 0x00-0xff)" % args.sweep)
+            sys.exit("ERROR: cannot parse the --sweep range: %r (e.g. 0x00-0xff)" % args.sweep)
         if args.do_set:
-            sys.exit("HATA: tarama sadece GET ile yapilir, --set ile birlestirilemez.")
+            sys.exit("ERROR: sweeps are GET only and cannot be combined with --set.")
         try:
             sweep(fd, addresses, lo, hi, args.timeout, raw=args.raw, out=args.out)
         finally:
@@ -219,8 +221,8 @@ def main():
     if args.cksum_lo is not None:
         cksums = [args.cksum_lo]
     elif args.do_set:
-        # Yazma checksum'i sahada dogrulandi (buf[6..N]). SET'i yanlis
-        # checksum'larla tekrarlamak istenmez — tek deneme.
+        # The write checksum is verified on the device (buf[6..N]). A SET should
+        # not be repeated with wrong checksums — one attempt.
         cksums = [6]
     else:
         cksums = [6, 5, 4, 7]
@@ -239,42 +241,42 @@ def main():
                         addr_str(address), name, event_id,
                         "SET" if args.do_set else "GET", tid, cl))
                     if args.raw or args.do_set:
-                        print("   ham: %s" % cmd[:n + 2].hex(" "))
+                        print("   raw: %s" % cmd[:n + 2].hex(" "))
                     try:
                         os.write(fd, cmd)
                     except OSError as e:
-                        print("   yazma hatasi: %s" % e)
+                        print("   write error: %s" % e)
                         continue
                     got = drain(fd, args.timeout, raw=args.raw, want=event_id)
                     if got:
                         answered = True
-                        print("   (cevap geldi — cksum_lo=%d calisiyor)" % cl)
+                        print("   (got a reply — cksum_lo=%d works)" % cl)
                         if args.do_set:
-                            # SET'ten sonra GET ile gercekten degisti mi bak.
+                            # After a SET, GET to see whether it really changed.
                             tid += 1
-                            print("\n-> dogrulama GET %s(0x%02X) tid=%d" % (name, event_id, tid))
+                            print("\n-> verifying GET %s(0x%02X) tid=%d" % (name, event_id, tid))
                             os.write(fd, build_command(address, event_id, ETYPE_GET, tid, b"", cl))
                             drain(fd, args.timeout, raw=args.raw, want=event_id)
                         break
-                    print("   (cevap yok)")
+                    print("   (no reply)")
                 if answered and not args.scan:
                     break
             if answered and not args.scan:
                 break
     except KeyboardInterrupt:
-        print("\n(kesildi)")
+        print("\n(interrupted)")
     finally:
         os.close(fd)
 
     print("\n" + "=" * 60)
     if answered:
-        print("SONUC: dongle komuta cevap veriyor. Protokol dogrulandi.")
+        print("RESULT: the dongle answers commands. Protocol confirmed.")
     else:
-        print("SONUC: hicbir kombinasyon cevap almadi.")
-        print("  Denenecekler:")
-        print("   - kulaklik dongle'a bagli ve takili mi (kutuda degil)")
-        print("   - sudo ./tools/query.py --scan --raw   (tum event_id + ham cikti)")
-        print("   - sudo ./tools/parse_desc.py           (output report gercekten var mi)")
+        print("RESULT: no combination got a reply.")
+        print("  Things to try:")
+        print("   - are the buds connected to the dongle and in your ears (not in the case)")
+        print("   - sudo ./tools/query.py --scan --raw   (every event_id + raw output)")
+        print("   - sudo ./tools/parse_desc.py           (is there really an output report)")
 
 
 if __name__ == "__main__":

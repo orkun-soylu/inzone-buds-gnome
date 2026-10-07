@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""INZONE Buds dongle HID report descriptor cozumleyici. Tamamen pasif."""
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""HID report descriptor parser for the INZONE Buds dongle. Entirely passive."""
 import os
 import sys
 
@@ -11,7 +12,7 @@ COLLECTION_KIND = {0: "Physical", 1: "Application", 2: "Logical", 3: "Report"}
 
 
 def items(desc):
-    """HID short item'lari coz -> (tag, type, data)."""
+    """Decode HID short items -> (tag, type, data)."""
     i = 0
     while i < len(desc):
         b = desc[i]
@@ -25,7 +26,7 @@ def items(desc):
 
 
 def parse(desc):
-    """Top-level collection'lari ve report ID basina I/O boyutlarini cikar."""
+    """Extract the top-level collections and the I/O sizes per report ID."""
     usage_page = usage = report_id = 0
     size = count = 0
     depth = 0
@@ -63,7 +64,7 @@ def parse(desc):
 def main():
     nodes = find_nodes()
     if not nodes:
-        sys.exit("  %04x:%04x icin hidraw node yok" % (VID, PID))
+        sys.exit("  no hidraw node for %04x:%04x" % (VID, PID))
 
     for path, is_vendor, _n in nodes:
         sysdesc = "/sys/class/hidraw/%s/device/report_descriptor" % os.path.basename(path)
@@ -71,18 +72,18 @@ def main():
             with open(sysdesc, "rb") as f:
                 desc = f.read()
         except OSError as e:
-            print("  %s: descriptor okunamadi (%s)" % (path, e))
+            print("  %s: cannot read the descriptor (%s)" % (path, e))
             continue
 
         print("  %s  (%d byte)%s" % (path, len(desc), "  <- vendor 0xFF04" if is_vendor else ""))
         for up, ug, reports in parse(desc):
-            label = "VENDOR" if up >= 0xFF00 else "standart"
+            label = "VENDOR" if up >= 0xFF00 else "standard"
             print("    collection: usage_page=0x%04X usage=0x%04X  [%s]" % (up, ug, label))
             for rid in sorted(reports):
                 parts = ", ".join(
                     "%s=%d byte" % (k, v // 8) for k, v in sorted(reports[rid].items()))
                 print("      report id 0x%02X: %s" % (rid, parts))
-        print("    ham: %s" % desc.hex())
+        print("    raw: %s" % desc.hex())
         print()
 
 

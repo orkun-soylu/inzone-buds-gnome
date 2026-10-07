@@ -1,14 +1,16 @@
 #!/bin/sh
-# INZONE Buds dongle'ini Pro Audio profiline sabitler. 'make wireplumber' bunu cagirir.
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
-# IKI katman birden gerekiyor (olculdu 2026-09-03):
-#   1. config kurali  -> temiz makinede, kayitli durum yokken profili secer
-#   2. kayitli durum  -> WirePlumber'in default-profile state'i config'i EZIYOR.
-#      Yalnizca config konuldugunda cihaz iec958'de kaldi; state duzeltilince
-#      dongle cikarilip takildiktan sonra bile pro-audio'da kaliyor.
+# Pins the INZONE Buds dongle to the Pro Audio profile. Called by 'make wireplumber'.
 #
-# 'wpctl set-profile' tek basina KALICI DEGIL: profili o an degistiriyor ama
-# state dosyasina yazmiyor, replug'da eski profil geri geliyor.
+# BOTH layers are needed (measured):
+#   1. config rule  -> picks the profile on a clean machine with no saved state
+#   2. saved state  -> WirePlumber's default-profile state OVERRIDES the config.
+#      With only the config in place the device stayed on iec958; once the state
+#      was fixed it stayed on pro-audio even after unplugging and replugging.
+#
+# 'wpctl set-profile' alone is NOT persistent: it changes the profile right away
+# but never writes the state file, so the old profile returns on replug.
 set -e
 
 CARD="alsa_card.usb-Sony_INZONE_Buds-00"
@@ -20,10 +22,10 @@ STATE="$HOME/.local/state/wireplumber/default-profile"
 
 mkdir -p "$CONF_DIR"
 cp -f "$SRC" "$CONF"
-echo "kuruldu: $CONF"
+echo "installed: $CONF"
 
-# Servis calisirken state duzenlenirse WirePlumber cikarken dosyayi geri yazar
-# ve degisiklik kaybolur. Once durdur.
+# If the state is edited while the service runs, WirePlumber writes the file
+# back on exit and the change is lost. Stop it first.
 systemctl --user stop wireplumber
 
 mkdir -p "$(dirname "$STATE")"
@@ -34,18 +36,18 @@ elif grep -q "^$CARD=" "$STATE"; then
 else
     printf '%s=%s\n' "$CARD" "$PROFILE" >> "$STATE"
 fi
-echo "state guncellendi: $STATE  ($CARD=$PROFILE)"
+echo "state updated: $STATE  ($CARD=$PROFILE)"
 
 systemctl --user start wireplumber
 sleep 2
 
 echo
-echo "Dogrulama:"
+echo "Check:"
 wpctl status | grep -i 'inzone buds pro' || {
-    echo "  UYARI: pro-audio sink'leri gorunmedi." >&2
-    echo "  Bak: journalctl --user -u wireplumber -n 30 --no-pager" >&2
+    echo "  WARNING: the pro-audio sinks did not show up." >&2
+    echo "  See: journalctl --user -u wireplumber -n 30 --no-pager" >&2
     exit 1
 }
 echo
-echo "pro-output-0 = oyun akisi, pro-output-1 = sohbet akisi."
-echo "Sesli gorusme uygulamasini 'INZONE Buds Pro 1'e yonlendir; gerisi varsayilanda kalsin."
+echo "pro-output-0 = game stream, pro-output-1 = chat stream."
+echo "Route your voice-chat app to 'INZONE Buds Pro 1'; leave everything else on the default."

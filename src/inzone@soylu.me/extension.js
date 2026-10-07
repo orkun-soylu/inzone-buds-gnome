@@ -1,4 +1,6 @@
-// INZONE Buds — GNOME Quick Settings kontrolu.
+// SPDX-License-Identifier: GPL-2.0-or-later
+//
+// INZONE Buds — GNOME Quick Settings control.
 
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
@@ -13,12 +15,12 @@ import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/ex
 import * as Proto from './protocol.js';
 import {InzoneDevice} from './device.js';
 
-const POLL_OPEN_MS = 2000;    // Quick Settings acikken
-const POLL_CLOSED_MS = 10000; // kapaliyken
-const DRAG_DEBOUNCE_MS = 220; // slider surukleme
-const USER_HOLD_MS = 2000;    // suruklemeden sonra poll'un UI'yi ezmemesi icin
+const POLL_OPEN_MS = 2000;    // while Quick Settings is open
+const POLL_CLOSED_MS = 10000; // while it is closed
+const DRAG_DEBOUNCE_MS = 220; // slider drags
+const USER_HOLD_MS = 2000;    // keeps a poll from overwriting the UI right after a drag
 
-/** Slider iceren bir menu satiri — Quick Settings izgarasinda yer kaplamaz. */
+/** A menu row holding a slider — takes no space in the Quick Settings grid. */
 const SliderRow = GObject.registerClass(
 class SliderRow extends PopupMenu.PopupBaseMenuItem {
     _init(iconName, onChange) {
@@ -47,7 +49,7 @@ class SliderRow extends PopupMenu.PopupBaseMenuItem {
         });
     }
 
-    /** Cihazdan gelen degeri yaz — kendi 'notify' geri cagrimizi tetiklemeden. */
+    /** Show a value read from the device — without firing our own 'notify' handler. */
     setValueQuiet(value) {
         this._suppress = true;
         this.slider.value = value;
@@ -64,11 +66,11 @@ class SliderRow extends PopupMenu.PopupBaseMenuItem {
 });
 
 /**
- * Gurultu modu satiri. Shell'in Ornament'ini KULLANMIYOR: Ornament.NONE isaret
- * ikonunu gorunmez yapiyor ve o da yer kaplamayi birakiyor, secili satirin
- * yazisi digerlerine gore saga kayiyordu. Kendi ikonumuzu koyup gorunurlugu
- * degil OPAKLIGI degistiriyoruz — yer her zaman ayrilmis kalir, uc satir da
- * ayni hizadan baslar.
+ * Noise-mode row. Does NOT use the shell's Ornament: Ornament.NONE hides the
+ * check icon and it stops taking up space, so the selected row's label was
+ * shifted right relative to the others. We add our own icon and change its
+ * OPACITY rather than its visibility — the space stays reserved and all three
+ * rows start at the same offset.
  */
 const ModeRow = GObject.registerClass(
 class ModeRow extends PopupMenu.PopupBaseMenuItem {
@@ -109,12 +111,12 @@ class InzoneToggle extends QuickMenuToggle {
 
         this.menu.setHeader('audio-headphones-symbolic', _('INZONE Buds'));
 
-        // --- gurultu kontrolu, uc durum
+        // --- noise control, three states
         this._modeItems = new Map();
         for (const [mode, label] of [
-            [Proto.NOISE_ANC, _('Gürültü engelleme')],
-            [Proto.NOISE_OFF, _('Kapalı')],
-            [Proto.NOISE_AMBIENT, _('Ortam sesi')],
+            [Proto.NOISE_ANC, _('Noise cancelling')],
+            [Proto.NOISE_OFF, _('Off')],
+            [Proto.NOISE_AMBIENT, _('Ambient sound')],
         ]) {
             const item = new ModeRow(label);
             item.connect('activate', () => this._applyMode(mode));
@@ -122,11 +124,11 @@ class InzoneToggle extends QuickMenuToggle {
             this._modeItems.set(mode, item);
         }
 
-        // --- ortam sesi seviyesi (0-20)
-        // Basliksiz duruyordu ve ikonu mikrofondu: kullanici bunu mikrofon
-        // seviyesi sandi. Ikon tek basina iki slider'i ayirt ettirmiyor.
+        // --- ambient sound level (0-20)
+        // It used to have no heading and a microphone icon, and was taken for
+        // the mic level. An icon alone does not tell the two sliders apart.
         this.menu.addMenuItem(
-            new PopupMenu.PopupSeparatorMenuItem(_('Ortam sesi seviyesi')));
+            new PopupMenu.PopupSeparatorMenuItem(_('Ambient sound level')));
         this._ambientRow = new SliderRow('audio-volume-high-symbolic', value => {
             this._lastUserAction = GLib.get_monotonic_time();
             const level = Math.round(value * Proto.AMBIENT_MAX);
@@ -136,22 +138,22 @@ class InzoneToggle extends QuickMenuToggle {
         });
         this.menu.addMenuItem(this._ambientRow);
 
-        // --- oyun / sohbet dengesi (0-100)
+        // --- game / chat balance (0-100)
         this.menu.addMenuItem(
-            new PopupMenu.PopupSeparatorMenuItem(_('Oyun / sohbet dengesi')));
+            new PopupMenu.PopupSeparatorMenuItem(_('Game / chat balance')));
         this._balanceRow = new SliderRow('applications-games-symbolic', value => {
             this._lastUserAction = GLib.get_monotonic_time();
-            // Cihaz 10'ar adim DAYATIYOR — ara degerler sessizce reddediliyor.
+            // The device ENFORCES steps of 10 — values in between are silently rejected.
             const step = Math.round(value * Proto.BALANCE_MAX / Proto.BALANCE_STEP)
                 * Proto.BALANCE_STEP;
             this._device.set(Proto.EV.BALANCE, [step]).catch(() => {});
         });
         this.menu.addMenuItem(this._balanceRow);
 
-        // --- mikrofon: 0x24 SEVIYE DEGIL, mute anahtari (olculdu). Bu yuzden
-        // slider degil switch. Anahtar ACIK = mikrofon calisiyor.
+        // --- microphone: 0x24 is NOT a level but a mute switch (measured),
+        // hence a switch rather than a slider. Switch ON = microphone live.
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._micItem = new PopupMenu.PopupSwitchMenuItem(_('Mikrofon'), true);
+        this._micItem = new PopupMenu.PopupSwitchMenuItem(_('Microphone'), true);
         this._micItem.connect('toggled', (_item, state) => {
             this._lastUserAction = GLib.get_monotonic_time();
             this._micMuted = !state;
@@ -161,12 +163,12 @@ class InzoneToggle extends QuickMenuToggle {
         this.menu.addMenuItem(this._micItem);
 
         this.connect('clicked', () => {
-            // Toggle = ANC acik/kapali. Ortam sesi menuden secilir.
+            // Toggle = ANC on/off. Ambient sound is picked from the menu.
             this._applyMode(this.checked ? Proto.NOISE_ANC : Proto.NOISE_OFF);
         });
     }
 
-    /** Kullanici az once slider surukledi mi — poll onu ezmesin. */
+    /** Did the user just touch a control — a poll must not overwrite it. */
     get _userIsHolding() {
         return GLib.get_monotonic_time() - this._lastUserAction < USER_HOLD_MS * 1000;
     }
@@ -195,7 +197,7 @@ class InzoneToggle extends QuickMenuToggle {
         this._renderNoise();
     }
 
-    /** setToggleState 'toggled' yaymaz — geri besleme dongusu olusmaz. */
+    /** setToggleState does not emit 'toggled' — no feedback loop. */
     updateMic(muted) {
         if (muted === null || this._userIsHolding)
             return;
@@ -215,11 +217,11 @@ class InzoneToggle extends QuickMenuToggle {
             ? null
             : (b.left === b.right
                 ? `${low}%`
-                : `S ${b.left ?? '–'}% · Sğ ${b.right ?? '–'}%`);
-        // String.prototype.format'a guvenme — Shell kendi ortamina kuruyor ama
-        // extension'in bagli olmasi gereken bir sozlesme degil.
+                : `L ${b.left ?? '–'}% · R ${b.right ?? '–'}%`);
+        // Don't rely on String.prototype.format — the shell installs it in its
+        // own environment, but it is not a contract an extension should lean on.
         this.menu.setHeader('audio-headphones-symbolic', _('INZONE Buds'),
-            low === null ? null : `${_('Pil')} ${low}%`);
+            low === null ? null : `${_('Battery')} ${low}%`);
     }
 });
 
@@ -238,7 +240,7 @@ export default class InzoneExtension extends Extension {
         this._indicator = new InzoneIndicator(this._device);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
 
-        // Kulakliga dokunuldugunda cihaz kendiliginden bildiriyor — UI canli kalsin.
+        // The device reports earbud touches on its own — keep the UI live.
         this._pushId = this._device.connect('pushed', (_dev, eventId, info) => {
             if (eventId === Proto.EV.NOISE)
                 this._indicator.toggle.updateNoise(Proto.decodeNoise(info.payload));
@@ -292,23 +294,23 @@ export default class InzoneExtension extends Extension {
             return;
 
         if (!this._device.isOpen && !this._device.open()) {
-            toggle.visible = false;   // dongle takili degil
+            toggle.visible = false;   // dongle not plugged in
             return;
         }
 
         try {
-            // Tek istekte batarya + ses + balance. Ayri ayri sormaktan ucuz.
+            // Battery + volume + balance in one request. Cheaper than asking separately.
             const bulk = await this._device.get(Proto.EV.STATUS_BULK);
             const noise = await this._device.get(Proto.EV.NOISE);
-            // 0x24 bulk'ta yok, ayrica sorulmali. Cihaz kendiliginden de
-            // bildiriyor (NTFY_ACTIVE) — bu poll yalnizca emniyet agi.
+            // 0x24 is not in the bulk status and has to be asked for. The device
+            // also reports it on its own (NTFY_ACTIVE) — this poll is a safety net.
             const mic = await this._device.get(Proto.EV.MIC_MUTE);
             toggle.updateBulk(Proto.decodeBulk(bulk.payload));
             toggle.updateNoise(Proto.decodeNoise(noise.payload));
             toggle.updateMic(Proto.decodeMicMuted(mic.payload));
             toggle.visible = true;
         } catch (e) {
-            // Kulaklik kutuda / kapali olabilir; dongle takili ama cevap yok.
+            // The buds may be in the case / off; dongle plugged in but no answer.
             toggle.visible = false;
         }
     }

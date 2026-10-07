@@ -1,5 +1,5 @@
-# Sony INZONE Buds dongle (054c:0ec2) — hidraw'a oturum acmis kullanici erisimi.
+# Sony INZONE Buds dongle (054c:0ec2) — hidraw access for the logged-in user.
 #
-# DOSYA ADI ONEMLI: uaccess etiketine 70-uaccess.rules etki eder, bu yuzden bu
-# kural ONDAN ONCE siralanmali. "99-" adiyla TAG+="uaccess" sessizce is gormez.
+# THE FILE NAME MATTERS: the uaccess tag is acted on by 70-uaccess.rules, so this
+# rule must sort BEFORE it. Named "99-", TAG+="uaccess" silently does nothing.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0ec2", TAG+="uaccess"
