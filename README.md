@@ -4,6 +4,8 @@ Control **Sony INZONE Buds (WF-G700N)** from the **GNOME Quick Settings** menu
 on Linux: battery level, noise cancelling / ambient sound, ambient sound level,
 game/chat balance and microphone mute.
 
+<img src="screenshot.png" width="340" alt="The INZONE Buds menu in GNOME Quick Settings: noise mode, ambient sound level, game/chat balance and microphone">
+
 The earbuds speak LE Audio only — there is no Bluetooth Classic, so the existing
 Linux tools for Sony headphones (BudsLink, SonyHeadphonesClient — both RFCOMM
 SPP) cannot work with them. The only control channel is the USB-C dongle, over
